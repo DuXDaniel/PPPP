@@ -1,4 +1,5 @@
 import numpy as np
+from numba import jit, prange
 #import cupy as cp
 import scipy.integrate as spi
 import scipy.interpolate as spip
@@ -7,11 +8,11 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import time
 import tqdm
-import multiprocessing as mlpr
 import sys
 from functools import partial
 import json
 
+@jit(nopython = True)
 def temporal_gauss(z,t,sig_las):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
@@ -20,6 +21,7 @@ def temporal_gauss(z,t,sig_las):
     val = np.exp(-(2*(z-c*t)**2)/(sig_las**2*c**2))
     return val
 
+@jit(nopython = True)
 def omeg_las_sq(z, beam_waist):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
@@ -30,6 +32,7 @@ def omeg_las_sq(z, beam_waist):
     val = w0**2*(1+z**2/z0**2)
     return val
 
+@jit(nopython = True)
 def spatial_gauss(rho_xy,z,t, beam_waist,sig_las):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
@@ -37,39 +40,8 @@ def spatial_gauss(rho_xy,z,t, beam_waist,sig_las):
     val = 1/np.pi/omeg_las_sq(z, beam_waist)*np.exp(-(2*rho_xy**2)/(omeg_las_sq(z, beam_waist)/temporal_gauss(z,t,sig_las)))
     return val
 
+@jit(nopython = True)
 def laser(rho_xy,z,t, beam_waist,sig_las):
-    planck = 6.626e-34*1e9*1e12 #nJ.*ps
-
-    ## Construct laser beam
-    val = spatial_gauss(rho_xy,z,t, beam_waist,sig_las)*temporal_gauss(z,t,sig_las)
-    return val
-
-def temporal_gauss_cp(z,t,sig_las):
-    planck = 6.626e-34*1e9*1e12 #nJ.*ps
-
-    ## Construct laser beam
-    c = 2.9979e8*1e9*1e-12 # nm./ps
-    val = cp.exp(-(2*(z-c*t)**2)/(sig_las**2*c**2))
-    return val
-
-def omeg_las_sq_cp(z, beam_waist):
-    planck = 6.626e-34*1e9*1e12 #nJ.*ps
-
-    ## Construct laser beam
-    lam = 500 # nm
-    w0 = beam_waist # nm
-    z0 = cp.pi*w0**2/lam # Rayleigh range, nm
-    val = w0**2*(1+z**2/z0**2)
-    return val
-
-def spatial_gauss_cp(rho_xy,z,t, beam_waist,sig_las):
-    planck = 6.626e-34*1e9*1e12 #nJ.*ps
-
-    ## Construct laser beam
-    val = 1/cp.pi/omeg_las_sq(z, beam_waist)*cp.exp(-(2*rho_xy**2)/(omeg_las_sq(z, beam_waist)/temporal_gauss(z,t,sig_las)))
-    return val
-
-def laser_cp(rho_xy,z,t, beam_waist,sig_las):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
@@ -91,29 +63,14 @@ def laser_sum(t, gauss_limit, sig_las, beam_waist):
     val = spi.dblquad(norm_laser_integrand, -gauss_limit*sig_las + c*t, gauss_limit*sig_las + c*t, 0, gauss_limit*np.sqrt(omeg_las_sq(c*t, beam_waist)), args=[t, beam_waist,sig_las])
     return val
 
+@jit(nopython = True)
 def trapz_self(x,y):
     x_diff = x[1:-1] - x[0:-2]
     y_trap = (y[1:-1] + y[0:-2])/2
     return sum(x_diff*y_trap)
 
-def feynman_single_calc_func(cur_voxel, pass_list):
-    init_y_vals = pass_list[0]
-    x_slopes = pass_list[1]
-    z_slopes = pass_list[2]
-    norm_factor_array = pass_list[3]
-    vel = pass_list[4]
-    beam_waist = pass_list[5]
-    sig_las = pass_list[6]
-    theta = pass_list[7]
-    beta = pass_list[8]
-    c = pass_list[9]
-    lam = pass_list[10]
-    t_range = pass_list[11]
-    hbar = pass_list[12]
-    alpha = pass_list[13]
-    mass_e = pass_list[14]
-    zshift = pass_list[15]
-    xshift = pass_list[16]
+@jit(nopython = True)
+def feynman_single_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
     #pbar = pass_list[12]
     # Determine slice level --> will determine weighting at the end
 
@@ -133,31 +90,15 @@ def feynman_single_calc_func(cur_voxel, pass_list):
     y_vals = init_y_vals[cur_voxel] - vel*t_range
     x_vals = y_vals*x_slopes[cur_voxel] + xshift
     z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = cp.sqrt(x_vals**2+y_vals**2)
-    rho_vals_2 = cp.sqrt(z_vals**2+y_vals**2)
-    density_vals = norm_factor_array*laser_cp(rho_vals,z_vals,t_range, beam_waist,sig_las)
-    full_vals = hbar*alpha*density_vals*lam/cp.sqrt(mass_e**2.*(1+vel**2/c**2))
+    rho_vals = np.sqrt(x_vals**2+y_vals**2)
+    rho_vals_2 = np.sqrt(z_vals**2+y_vals**2)
+    density_vals = norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las)
+    full_vals = hbar*alpha*density_vals*lam/np.sqrt(mass_e**2.*(1+vel**2/c**2))
     calc = trapz_self(t_range,full_vals)
     return (not math.isnan(calc))*calc
 
-def feynman_double_calc_func(cur_voxel, pass_list):
-    init_y_vals = pass_list[0]
-    x_slopes = pass_list[1]
-    z_slopes = pass_list[2]
-    norm_factor_array = pass_list[3]
-    vel = pass_list[4]
-    beam_waist = pass_list[5]
-    sig_las = pass_list[6]
-    theta = pass_list[7]
-    beta = pass_list[8]
-    c = pass_list[9]
-    lam = pass_list[10]
-    t_range = pass_list[11]
-    hbar = pass_list[12]
-    alpha = pass_list[13]
-    mass_e = pass_list[14]
-    zshift = pass_list[15]
-    xshift = pass_list[16]
+@jit(nopython = True)
+def feynman_double_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
     #pbar = pass_list[12]
     # Determine slice level --> will determine weighting at the end
 
@@ -184,21 +125,8 @@ def feynman_double_calc_func(cur_voxel, pass_list):
     calc = trapz_self(t_range,full_vals)
     return (not math.isnan(calc))*calc
 
-def quasi_single_calc_func(cur_voxel, pass_list):
-    init_y_vals = pass_list[0]
-    x_slopes = pass_list[1]
-    z_slopes = pass_list[2]
-    norm_factor_array = pass_list[3]
-    vel = pass_list[4]
-    beam_waist = pass_list[5]
-    sig_las = pass_list[6]
-    theta = pass_list[7]
-    beta = pass_list[8]
-    c = pass_list[9]
-    lam = pass_list[10]
-    t_range = pass_list[11]
-    zshift = pass_list[15]
-    xshift = pass_list[16]
+@jit(nopython = True)
+def quasi_single_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
     #pbar = pass_list[12]
     # Determine slice level --> will determine weighting at the end
 
@@ -218,27 +146,13 @@ def quasi_single_calc_func(cur_voxel, pass_list):
     y_vals = init_y_vals[cur_voxel] - vel*t_range
     x_vals = y_vals*x_slopes[cur_voxel] + xshift
     z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = cp.sqrt(x_vals**2+y_vals**2)
-    rho_vals_2 = cp.sqrt(z_vals**2+y_vals**2)
-    full_vals = (norm_factor_array*laser_cp(rho_vals,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*cp.cos(2*cp.pi*(z_vals-c*t_range)/lam)**2*cp.cos(theta)**2)
+    rho_vals = np.sqrt(x_vals**2+y_vals**2)
+    full_vals = (norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*np.cos(2*np.pi*(z_vals-c*t_range)/lam)**2*np.cos(theta)**2)
     calc = trapz_self(t_range,full_vals)
     return (not math.isnan(calc))*calc
 
-def quasi_double_calc_func(cur_voxel, pass_list):
-    init_y_vals = pass_list[0]
-    x_slopes = pass_list[1]
-    z_slopes = pass_list[2]
-    norm_factor_array = pass_list[3]
-    vel = pass_list[4]
-    beam_waist = pass_list[5]
-    sig_las = pass_list[6]
-    theta = pass_list[7]
-    beta = pass_list[8]
-    c = pass_list[9]
-    lam = pass_list[10]
-    t_range = pass_list[11]
-    zshift = pass_list[15]
-    xshift = pass_list[16]
+@jit(nopython = True)
+def quasi_double_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
     #pbar = pass_list[12]
     # Determine slice level --> will determine weighting at the end
 
@@ -258,11 +172,48 @@ def quasi_double_calc_func(cur_voxel, pass_list):
     y_vals = init_y_vals[cur_voxel] - vel*t_range
     x_vals = y_vals*x_slopes[cur_voxel] + xshift
     z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = cp.sqrt(x_vals**2+y_vals**2)
-    rho_vals_2 = cp.sqrt(z_vals**2+y_vals**2)
-    full_vals = (norm_factor_array*laser_cp(rho_vals,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*cp.cos(2*cp.pi*(z_vals-c*t_range)/lam)**2*cp.cos(theta)**2) + (norm_factor_array*laser_cp(rho_vals_2,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*cp.cos(2*cp.pi*(x_vals-c*t_range)/lam)**2*cp.cos(theta)**2)
+    rho_vals = np.sqrt(x_vals**2+y_vals**2)
+    rho_vals_2 = np.sqrt(z_vals**2+y_vals**2)
+    full_vals = (norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*np.cos(2*np.pi*(z_vals-c*t_range)/lam)**2*np.cos(theta)**2) + (norm_factor_array*laser(rho_vals_2,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*np.cos(2*np.pi*(x_vals-c*t_range)/lam)**2*np.cos(theta)**2)
     calc = trapz_self(t_range,full_vals)
     return (not math.isnan(calc))*calc
+
+# electron beam functions
+def omeg_ebeam(y,xover_slope):
+    val = np.absolute(xover_slope*y)
+    return val
+
+def e_beam_xz(rho_xz,size_direct_beam):
+    val = 1/np.pi/(size_direct_beam)**2*np.exp(-(2*rho_xz**2)/(size_direct_beam)**2)
+    return val
+
+def e_beam_xz_raster(x,z,size_direct_beam):
+    val = 1/np.pi/(size_direct_beam)**2*np.exp(-(2*(x**2 + z**2))/(size_direct_beam)**2)
+    return val
+
+def e_beam_yt(y,sig_ebeam,vel):
+    val = 1/np.pi/sig_ebeam**2/vel**2*np.exp(-(2*(y)**2)/(sig_ebeam**2*vel**2))
+    return val
+
+@jit(nopython = True,parallel = True)
+def model_caller(init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift,calc_type,laser_num,num_voxels):
+    voxel_grid_phase_data_res = np.zeros(num_voxels)
+    for i in prange(num_voxels):
+        try:
+            if calc_type == 0:
+                if laser_num == 1:
+                    voxel_grid_phase_data_res[i] = quasi_single_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
+                elif laser_num == 2:
+                    voxel_grid_phase_data_res[i] = quasi_double_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
+            elif calc_type == 1:
+                if laser_num == 1:
+                    voxel_grid_phase_data_res[i] = feynman_single_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
+                elif laser_num == 2:
+                    voxel_grid_phase_data_res[i] = feynman_double_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
+        except:
+            print('error in calculating slice integral')
+
+    return voxel_grid_phase_data_res
 
 def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w0=100e3,E_pulse=1,voxel_granularity=9,slice_granularity=9,focus_granularity=1,num_points_to_add=2000,size_direct_beam=100e3,gauss_limit=3):
     print('Seeding workspace with relevant information.')
@@ -314,23 +265,6 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
         data['sig_las'] = sig_las
     data['beam_waist'] = w0
     data['E_pulse'] = E_pulse
-
-    # electron beam functions
-    def omeg_ebeam(y):
-        val = np.absolute(xover_slope*y)
-        return val
-
-    def e_beam_xz(rho_xz):
-        val = 1/np.pi/(size_direct_beam)**2*np.exp(-(2*rho_xz**2)/(size_direct_beam)**2)
-        return val
-
-    def e_beam_xz_raster(x,z):
-        val = 1/np.pi/(size_direct_beam)**2*np.exp(-(2*(x**2 + z**2))/(size_direct_beam)**2)
-        return val
-
-    def e_beam_yt(y):
-        val = 1/np.pi/sig_ebeam**2/vel**2*np.exp(-(2*(y)**2)/(sig_ebeam**2*vel**2))
-        return val
 
     print('preparing electron slices')
 
@@ -385,11 +319,11 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
 
     print('calculating the electron beam normalization constants')
     # normalizing the electron beam in the xz plane (orthogonal to principal electron-optical axis) and the y-direction
-    e_beam_xz_integral = spi.quad(lambda x: 2*np.pi*x*e_beam_xz(x), 0, gauss_limit*size_direct_beam)
+    e_beam_xz_integral = spi.quad(lambda x: 2*np.pi*x*e_beam_xz(x,size_direct_beam), 0, gauss_limit*size_direct_beam)
     e_beam_xz_norm = 1/e_beam_xz_integral[0]
 
     if (ebeam_type == 0):
-        e_beam_int = spi.quad(e_beam_yt, y_bounds[1], y_bounds[-1])
+        e_beam_int = spi.quad(lambda y: e_beam_yt(y,sig_ebeam,vel), y_bounds[1], y_bounds[-1])
         e_beam_yt_norm = 1 / e_beam_int[0]
     elif (ebeam_type == 1):
         e_beam_int = 1/(y_bounds[-1] - y_bounds[1])
@@ -431,13 +365,13 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
     if (sig_ebeam < sig_las):
         y_dist_from_center = gauss_limit*sig_las*vel
         for j in np.arange(voxel_granularity):
-            voxel_grid_slope_x_data[j,:] = np.linspace(-gauss_limit*omeg_ebeam(gauss_limit*sig_las*vel),gauss_limit*omeg_ebeam(gauss_limit*sig_las*vel),voxel_granularity)/y_dist_from_center
-            voxel_grid_slope_z_data[:,j] = np.linspace(-gauss_limit*omeg_ebeam(gauss_limit*sig_las*vel),gauss_limit*omeg_ebeam(gauss_limit*sig_las*vel),voxel_granularity)/y_dist_from_center
+            voxel_grid_slope_x_data[j,:] = np.linspace(-gauss_limit*omeg_ebeam(gauss_limit*sig_las*vel,xover_slope),gauss_limit*omeg_ebeam(gauss_limit*sig_las*vel,xover_slope),voxel_granularity)/y_dist_from_center
+            voxel_grid_slope_z_data[:,j] = np.linspace(-gauss_limit*omeg_ebeam(gauss_limit*sig_las*vel,xover_slope),gauss_limit*omeg_ebeam(gauss_limit*sig_las*vel,xover_slope),voxel_granularity)/y_dist_from_center
     elif (sig_las <= sig_ebeam):
         y_dist_from_center = gauss_limit*sig_ebeam*vel
         for j in np.arange(voxel_granularity):
-            voxel_grid_slope_x_data[j,:] = np.linspace(-gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel),gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel),voxel_granularity)/y_dist_from_center
-            voxel_grid_slope_z_data[:,j] = np.linspace(-gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel),gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel),voxel_granularity)/y_dist_from_center
+            voxel_grid_slope_x_data[j,:] = np.linspace(-gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel,xover_slope),gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel,xover_slope),voxel_granularity)/y_dist_from_center
+            voxel_grid_slope_z_data[:,j] = np.linspace(-gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel,xover_slope),gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel,xover_slope),voxel_granularity)/y_dist_from_center
 
     print('weighting electron beam in the y direction')
     ## calculating voxel weights... need to find integration bounds for each voxel point at the final position of the e-beam ("detector")
@@ -446,7 +380,7 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
 
     for l in np.arange(slice_granularity):
         if (ebeam_type == 0):
-            weight_int = spi.quad(e_beam_yt, y_bounds[l], y_bounds[l + 1])
+            weight_int = spi.quad(lambda y: e_beam_yt(y,sig_ebeam,vel), y_bounds[l], y_bounds[l + 1])
             voxel_y_weights[l] = e_beam_yt_norm*weight_int[0]
         elif (ebeam_type == 1):
             voxel_y_weights[l] = e_beam_yt_norm*(y_bounds[l + 1] - y_bounds[l])
@@ -480,7 +414,7 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
         voxel_xz_grid_weights = np.zeros((voxel_granularity, voxel_granularity))
         for j in np.arange(voxel_granularity):
             for k in np.arange(voxel_granularity):
-                cur_xz_integral = spi.dblquad(e_beam_xz_raster, xz_bounds[j], xz_bounds[j + 1], xz_bounds[k],xz_bounds[k + 1])
+                cur_xz_integral = spi.dblquad(lambda x,z: e_beam_xz_raster(x,z,size_direct_beam), xz_bounds[j], xz_bounds[j + 1], xz_bounds[k],xz_bounds[k + 1])
                 voxel_xz_grid_weights[j, k] = e_beam_xz_norm * cur_xz_integral[0]
     else:
         xz_focus_centers = 0
@@ -565,8 +499,6 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
         x_slopes[cur_voxel] = voxel_grid_slope_x_data[m,n]
         z_slopes[cur_voxel] = voxel_grid_slope_z_data[m,n]
 
-    pool_obj = mlpr.Pool(processes = mlpr.cpu_count()-1)
-
     pbar = tqdm.tqdm(total=z_drift.size)
     for zin in np.arange(z_drift.size):
 
@@ -577,14 +509,11 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
             z_shift = z_drift[zin]
             x_shift = x_drift[xin]
 
+            '''
             method_list = list()
-            #method_list.append(cp.asarray(init_y_vals))
             method_list.append(init_y_vals)
-            #method_list.append(cp.asarray(x_slopes))
             method_list.append(x_slopes)
-            #method_list.append(cp.asarray(z_slopes))
             method_list.append(z_slopes)
-            #method_list.append(cp.asarray(norm_factor_array))
             method_list.append(norm_factor_array)
             method_list.append(vel)
             method_list.append(w0)
@@ -593,33 +522,19 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
             method_list.append(beta)
             method_list.append(c)
             method_list.append(lam)
-            #method_list.append(cp.asarray(t_range_extended))
             method_list.append(t_range_extended)
             method_list.append(hbar)
             method_list.append(alpha)
             method_list.append(mass_e)
             method_list.append(z_shift)
             method_list.append(x_shift)
+            '''
 
-            voxel_grid_phase_data_unpacked = np.zeros(num_voxels)
-
-            try:
-                if calc_type == 0:
-                    if laser_num == 1:
-                        voxel_grid_phase_data_res = pool_obj.map(partial(quasi_single_calc_func, pass_list=method_list), np.arange(num_voxels).tolist())
-                    elif laser_num == 2:
-                        voxel_grid_phase_data_res = pool_obj.map(partial(quasi_double_calc_func, pass_list=method_list), np.arange(num_voxels).tolist())
-                elif calc_type == 1:
-                    if laser_num == 1:
-                        voxel_grid_phase_data_res = pool_obj.map(partial(feynman_single_calc_func, pass_list=method_list), np.arange(num_voxels).tolist())
-                    elif laser_num == 2:
-                        voxel_grid_phase_data_res = pool_obj.map(partial(feynman_double_calc_func, pass_list=method_list), np.arange(num_voxels).tolist())
-            except:
-                print('error in calculating slice integral')
+            voxel_grid_phase_data_unpacked = model_caller(init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift,calc_type,laser_num,num_voxels)
 
             #print('Sending results from GPU to CPU')
             #voxel_grid_phase_data_unpacked = cp.array(voxel_grid_phase_data_res).get()
-            voxel_grid_phase_data_unpacked = voxel_grid_phase_data_res
+
             #print('Successful transfer')
             # generate map distribution of electron beam, summing and averaging over
             # all slices
@@ -651,18 +566,11 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
 
         pbar.update(1)
     pbar.close()
-    pool_obj.close()
-    pool_obj.join()
     elapsed = time.time() - t
     print(elapsed)
-    pool_obj.close()
-    pool_obj.join()
 
     data['results'] = voxel_grid_cumulative_phase_data.tolist()
-    json_data = json.dumps(data)
-    with open("sample.json", "w") as outfile:
-        outfile.write(json_data)
-    return voxel_grid_cumulative_phase_data
+    return data
 
 def main(argv):
     #mempool = cp.get_default_memory_pool()
@@ -688,10 +596,17 @@ def main(argv):
 
     E_pulse = 22.25e3 # nJ
     data = PPPP_calculator(calc_type,laser_num,ebeam_type,sig_ebeam,sig_las,w0,E_pulse,voxel_granularity,slice_granularity,focus_granularity,num_points_to_add,size_direct_beam,gauss_limit)
+    data = PPPP_calculator(calc_type, laser_num, ebeam_type, sig_ebeam, sig_las, w0, E_pulse, voxel_granularity, slice_granularity, focus_granularity, num_points_to_add, size_direct_beam, gauss_limit)
+
+    json_data = json.dumps(data)
+    with open("sample.json", "w") as outfile:
+        outfile.write(json_data)
+
+    fig_data = data['results']
     plt.figure()
-    plt.imshow(data)
+    plt.imshow(fig_data)
     plt.show()
-    input('awaiting')
 
 if __name__ == '__main__':
     main(sys.argv)
+    input('awaiting')
