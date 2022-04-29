@@ -1,5 +1,5 @@
 import numpy as np
-from numba import jit, prange
+from numba import jit, prange, cuda
 import scipy.integrate as spi
 import scipy.interpolate as spip
 import math as math
@@ -19,55 +19,47 @@ def temporal_gauss(z,t,sig_las):
     return val
 
 @jit(nopython = True)
-def omeg_las_sq(z, beam_waist):
+def omeg_las_sq(z, beam_waist, lam):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
-    lam = 500 # nm
-    w0 = beam_waist # nm
-    z0 = np.pi*w0**2/lam # Rayleigh range, nm
-    val = w0**2*(1+z**2/z0**2)
+    z0 = np.pi*beam_waist**2/lam # Rayleigh range, nm
+    val = beam_waist**2*(1+z**2/z0**2)
     return val
 
 @jit(nopython = True)
-def spatial_gauss(rho_xy,z,t, beam_waist,sig_las):
+def spatial_gauss(rho_xy,z,t, beam_waist,sig_las,lam):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
-    val = 1/np.pi/omeg_las_sq(z, beam_waist)*np.exp(-(2*rho_xy**2)/(omeg_las_sq(z, beam_waist)/temporal_gauss(z,t,sig_las)))
+    val = 1/np.pi/omeg_las_sq(z, beam_waist,lam)*np.exp(-(2*rho_xy**2)/(omeg_las_sq(z, beam_waist,lam)/temporal_gauss(z,t,sig_las)))
     return val
 
 @jit(nopython = True)
-def laser(rho_xy,z,t, beam_waist,sig_las):
+def laser(rho_xy,z,t, beam_waist,sig_las,lam):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
-    val = spatial_gauss(rho_xy,z,t, beam_waist,sig_las)*temporal_gauss(z,t,sig_las)
+    val = spatial_gauss(rho_xy,z,t, beam_waist,sig_las,lam)*temporal_gauss(z,t,sig_las)
     return val
 
-def norm_laser_integrand(rho_xy,z,t,beam_waist,sig_las):
+def norm_laser_integrand(rho_xy,z,t,beam_waist,sig_las,lam):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
-    val = 2*np.pi*rho_xy*laser(rho_xy,z,t, beam_waist,sig_las)
+    val = 2*np.pi*rho_xy*laser(rho_xy,z,t, beam_waist,sig_las,lam)
     return val
 
-def laser_sum(t, gauss_limit, sig_las, beam_waist):
+def laser_sum(t, gauss_limit, sig_las, beam_waist,lam):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
     c = 2.9979e8*1e9*1e-12 # nm./ps
-    val = spi.dblquad(norm_laser_integrand, -gauss_limit*sig_las + c*t, gauss_limit*sig_las + c*t, 0, gauss_limit*np.sqrt(omeg_las_sq(c*t, beam_waist)), args=[t, beam_waist,sig_las])
+    val = spi.dblquad(norm_laser_integrand, -gauss_limit*sig_las + c*t, gauss_limit*sig_las + c*t, 0, gauss_limit*np.sqrt(omeg_las_sq(c*t, beam_waist, lam)), args=[t, beam_waist,sig_las,lam])
     return val
 
-@jit(nopython = True)
-def trapz_self(x,y):
-    x_diff = x[1:-1] - x[0:-2]
-    y_trap = (y[1:-1] + y[0:-2])/2
-    return sum(x_diff*y_trap)
-
-@jit(nopython = True)
-def feynman_single_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
+@cuda.jit(device = True)
+def calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,t_range,constants_array):
     #pbar = pass_list[12]
     # Determine slice level --> will determine weighting at the end
 
@@ -79,101 +71,48 @@ def feynman_single_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor
     # calculation and current time
 
     # calculate photon densities at position grid
+    # constants_array = np.array([vel,w0,sig_las,theta,beta,c,lam,hbar,alpha,mass_e,z_shift,x_shift,calc_type,laser_num,num_voxels])
 
     # calculate path for current x(t), y(t), z(t) for specific slice, and
     # voxel m,n. This is the path of the electron, but these values
     # are placed into the laser equation.
+    y_vals = init_y_vals[cur_voxel] - vel * t_range
+    x_vals = y_vals * x_slopes[cur_voxel] + xshift
+    z_vals = y_vals * z_slopes[cur_voxel] + zshift
+    rho_vals_xy = math.sqrt(x_vals ** 2 + y_vals ** 2)
+    temporal_vals = math.exp(-(2 * (z_vals - c * t_range) ** 2) / (sig_las ** 2 * c ** 2))
+    z0 = math.pi*beam_waist**2/lam # Rayleigh range, nm
+    omeg_vals_z = beam_waist**2*(1+z_vals**2/z0**2)
+    spatial_vals_xy = 1 / math.pi / omeg_vals_z * math.exp(-(2 * rho_vals_xy ** 2) / (omeg_vals_z))
+    laser_val_z = spatial_vals_xy * temporal_vals
 
-    y_vals = init_y_vals[cur_voxel] - vel*t_range
-    x_vals = y_vals*x_slopes[cur_voxel] + xshift
-    z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = np.sqrt(x_vals**2+y_vals**2)
-    rho_vals_2 = np.sqrt(z_vals**2+y_vals**2)
-    density_vals = norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las)
-    full_vals = hbar*alpha*density_vals*lam/np.sqrt(mass_e**2.*(1+vel**2/c**2))
-    calc = trapz_self(t_range,full_vals)
-    return (not math.isnan(calc))*calc
+    if (calc_type == 0):
+        if (laser_num == 1):
+            density_vals = norm_factor_array * laser_val_z
+            full_vals = hbar * alpha * density_vals * lam / math.sqrt(mass_e ** 2 * (1 + vel ** 2 / c ** 2))
+        elif (laser_num == 2):
+            rho_vals_zy = math.sqrt(z_vals ** 2 + y_vals ** 2)
+            omeg_vals_x = beam_waist**2*(1+x_vals**2/z0**2)
+            spatial_vals_zy = 1 / math.pi / omeg_vals_x * math.exp(-(2 * rho_vals_zy ** 2) / (omeg_vals_x))
+            laser_val_x = spatial_vals_zy * temporal_vals
 
-@jit(nopython = True)
-def feynman_double_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
-    #pbar = pass_list[12]
-    # Determine slice level --> will determine weighting at the end
+            density_vals = norm_factor_array * (laser_val_z + laser_val_x)
+            full_vals = hbar * alpha * density_vals * lam / math.sqrt(mass_e ** 2 * (1 + vel ** 2 / c ** 2))
+    elif (calc_type == 1):
+        if (laser_num == 1):
+            full_vals = (norm_factor_array * laser_val_z) ** 2 * (1 - beta ** 2 * math.cos(2 * math.pi * (z_vals - c * t_range) / lam) ** 2 * math.cos(theta) ** 2)
+        elif (laser_num == 2):
+            rho_vals_zy = math.sqrt(z_vals**2+y_vals**2)
+            omeg_vals_x = beam_waist**2*(1+x_vals**2/z0**2)
+            spatial_vals_zy = 1 / math.pi / omeg_vals_x * math.exp(-(2 * rho_vals_zy ** 2) / (omeg_vals_x))
+            laser_val_x = spatial_vals_zy * temporal_vals
+            full_vals = (norm_factor_array*laser_val_z**2*(1-beta**2*math.cos(2*math.pi*(z_vals-c*t_range)/lam)**2*math.cos(theta)**2)) + (norm_factor_array*laser_val_x**2*(1-beta**2*math.cos(2*math.pi*(x_vals-c*t_range)/lam)**2*math.cos(theta)**2))
 
-    # Assumption: all electrons pass through (x0,z0) at crossover most
-    # likely incorrect, but we have nothing else to go off of will only
-    # slightly cause the CTF to show a higher than normal resolution
-
-    # reference current voxel xz position grid from travel path
-    # calculation and current time
-
-    # calculate photon densities at position grid
-
-    # calculate path for current x(t), y(t), z(t) for specific slice, and
-    # voxel m,n. This is the path of the electron, but these values
-    # are placed into the laser equation.
-
-    y_vals = init_y_vals[cur_voxel] - vel*t_range
-    x_vals = y_vals*x_slopes[cur_voxel] + xshift
-    z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = np.sqrt(x_vals**2+y_vals**2)
-    rho_vals_2 = np.sqrt(z_vals**2+y_vals**2)
-    density_vals = norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las) + norm_factor_array*laser(rho_vals_2,x_vals,t_range, beam_waist,sig_las)
-    full_vals = hbar*alpha*density_vals*lam/np.sqrt(mass_e**2.*(1+vel**2/c**2))
-    calc = trapz_self(t_range,full_vals)
-    return (not math.isnan(calc))*calc
-
-@jit(nopython = True)
-def quasi_single_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
-    #pbar = pass_list[12]
-    # Determine slice level --> will determine weighting at the end
-
-    # Assumption: all electrons pass through (x0,z0) at crossover most
-    # likely incorrect, but we have nothing else to go off of will only
-    # slightly cause the CTF to show a higher than normal resolution
-
-    # reference current voxel xz position grid from travel path
-    # calculation and current time
-
-    # calculate photon densities at position grid
-
-    # calculate path for current x(t), y(t), z(t) for specific slice, and
-    # voxel m,n. This is the path of the electron, but these values
-    # are placed into the laser equation.
-
-    y_vals = init_y_vals[cur_voxel] - vel*t_range
-    x_vals = y_vals*x_slopes[cur_voxel] + xshift
-    z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = np.sqrt(x_vals**2+y_vals**2)
-    full_vals = (norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*np.cos(2*np.pi*(z_vals-c*t_range)/lam)**2*np.cos(theta)**2)
-    calc = trapz_self(t_range,full_vals)
-    return (not math.isnan(calc))*calc
-
-@jit(nopython = True)
-def quasi_double_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
-    #pbar = pass_list[12]
-    # Determine slice level --> will determine weighting at the end
-
-    # Assumption: all electrons pass through (x0,z0) at crossover most
-    # likely incorrect, but we have nothing else to go off of will only
-    # slightly cause the CTF to show a higher than normal resolution
-
-    # reference current voxel xz position grid from travel path
-    # calculation and current time
-
-    # calculate photon densities at position grid
-
-    # calculate path for current x(t), y(t), z(t) for specific slice, and
-    # voxel m,n. This is the path of the electron, but these values
-    # are placed into the laser equation.
-
-    y_vals = init_y_vals[cur_voxel] - vel*t_range
-    x_vals = y_vals*x_slopes[cur_voxel] + xshift
-    z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = np.sqrt(x_vals**2+y_vals**2)
-    rho_vals_2 = np.sqrt(z_vals**2+y_vals**2)
-    full_vals = (norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*np.cos(2*np.pi*(z_vals-c*t_range)/lam)**2*np.cos(theta)**2) + (norm_factor_array*laser(rho_vals_2,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*np.cos(2*np.pi*(x_vals-c*t_range)/lam)**2*np.cos(theta)**2)
-    calc = trapz_self(t_range,full_vals)
-    return (not math.isnan(calc))*calc
+    x_diff = t_range[1:-1] - t_range[0:-2]
+    y_trap = (full_vals[1:-1] + full_vals[0:-2])/2
+    calc = sum(x_diff*y_trap)
+    calc = (not math.isnan(calc))*calc
+    return calc
 
 # electron beam functions
 def omeg_ebeam(y,xover_slope):
@@ -195,18 +134,20 @@ def e_beam_yt(y,sig_ebeam,vel):
 @jit(nopython = True,parallel = True)
 def model_caller(init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift,calc_type,laser_num,num_voxels):
     voxel_grid_phase_data_res = np.zeros(num_voxels)
+    threadsperblock = 64
+    blockspergrid = (1 + (threadsperblock - 1)) # trapz only returns a single value in this usage case
+    constants_array = np.array([vel,w0,sig_las,theta,beta,c,lam,hbar,alpha,mass_e,z_shift,x_shift,calc_type,laser_num,num_voxels])
+    constants_gpu_array = cuda.to_device(constants_array)
+    init_y_vals_gpu = cuda.to_device(init_y_vals)
+    x_slopes_gpu = cuda.to_device(x_slopes)
+    z_slopes_gpu = cuda.to_device(z_slopes)
+    norm_factor_gpu_array = cuda.to_device(norm_factor_array)
+    t_range_gpu = cuda.to_device(t_range_extended)
     for i in prange(num_voxels):
+        i_gpu = cuda.to_device(i)
         try:
-            if calc_type == 0:
-                if laser_num == 1:
-                    voxel_grid_phase_data_res[i] = quasi_single_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
-                elif laser_num == 2:
-                    voxel_grid_phase_data_res[i] = quasi_double_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
-            elif calc_type == 1:
-                if laser_num == 1:
-                    voxel_grid_phase_data_res[i] = feynman_single_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
-                elif laser_num == 2:
-                    voxel_grid_phase_data_res[i] = feynman_double_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
+            val = calc_func[blockspergrid, threadsperblock](i_gpu,init_y_vals_gpu,x_slopes_gpu,z_slopes_gpu,norm_factor_gpu_array,t_range_gpu,constants_gpu_array)
+            voxel_grid_phase_data_res[i] = val
         except:
             print('error in calculating slice integral')
 
@@ -389,7 +330,7 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
 
     #input('beginning integral')
     for i in np.arange(t_bounds.size):
-        val_int = laser_sum(t_bounds[i], gauss_limit, sig_las, w0)
+        val_int = laser_sum(t_bounds[i], gauss_limit, sig_las, w0, lam)
         laser_sum_array[i] = val_int[0]
         laser_sum_err[i] = val_int[1]
 
