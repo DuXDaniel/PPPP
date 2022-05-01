@@ -593,7 +593,6 @@ def main(argv):
 
     E_pulse = 22.25e3 # nJ
     data = PPPP_calculator(calc_type,laser_num,ebeam_type,sig_ebeam,sig_las,w0,E_pulse,voxel_granularity,slice_granularity,focus_granularity,num_points_to_add,size_direct_beam,gauss_limit)
-    data = PPPP_calculator(calc_type, laser_num, ebeam_type, sig_ebeam, sig_las, w0, E_pulse, voxel_granularity, slice_granularity, focus_granularity, num_points_to_add, size_direct_beam, gauss_limit)
 
     json_data = json.dumps(data)
     with open("sample.json", "w") as outfile:
