@@ -1,5 +1,5 @@
 import numpy as np
-from numba import jit, prange
+from numba import jit, prange, cuda
 import scipy.integrate as spi
 import scipy.interpolate as spip
 import math as math
@@ -19,161 +19,44 @@ def temporal_gauss(z,t,sig_las):
     return val
 
 @jit(nopython = True)
-def omeg_las_sq(z, beam_waist):
+def omeg_las_sq(z, beam_waist, lam):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
-    lam = 500 # nm
-    w0 = beam_waist # nm
-    z0 = np.pi*w0**2/lam # Rayleigh range, nm
-    val = w0**2*(1+z**2/z0**2)
+    z0 = np.pi*beam_waist**2/lam # Rayleigh range, nm
+    val = beam_waist**2*(1+z**2/z0**2)
     return val
 
 @jit(nopython = True)
-def spatial_gauss(rho_xy,z,t, beam_waist,sig_las):
+def spatial_gauss(rho_xy,z,t, beam_waist,sig_las,lam):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
-    val = 1/np.pi/omeg_las_sq(z, beam_waist)*np.exp(-(2*rho_xy**2)/(omeg_las_sq(z, beam_waist)/temporal_gauss(z,t,sig_las)))
+    val = 1/np.pi/omeg_las_sq(z, beam_waist,lam)*np.exp(-(2*rho_xy**2)/(omeg_las_sq(z, beam_waist,lam)/temporal_gauss(z,t,sig_las)))
     return val
 
 @jit(nopython = True)
-def laser(rho_xy,z,t, beam_waist,sig_las):
+def laser(rho_xy,z,t, beam_waist,sig_las,lam):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
-    val = spatial_gauss(rho_xy,z,t, beam_waist,sig_las)*temporal_gauss(z,t,sig_las)
+    val = spatial_gauss(rho_xy,z,t, beam_waist,sig_las,lam)*temporal_gauss(z,t,sig_las)
     return val
 
-def norm_laser_integrand(rho_xy,z,t,beam_waist,sig_las):
+def norm_laser_integrand(rho_xy,z,t,beam_waist,sig_las,lam):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
-    val = 2*np.pi*rho_xy*laser(rho_xy,z,t, beam_waist,sig_las)
+    val = 2*np.pi*rho_xy*laser(rho_xy,z,t, beam_waist,sig_las,lam)
     return val
 
-def laser_sum(t, gauss_limit, sig_las, beam_waist):
+def laser_sum(t, gauss_limit, sig_las, beam_waist,lam):
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
 
     ## Construct laser beam
     c = 2.9979e8*1e9*1e-12 # nm./ps
-    val = spi.dblquad(norm_laser_integrand, -gauss_limit*sig_las + c*t, gauss_limit*sig_las + c*t, 0, gauss_limit*np.sqrt(omeg_las_sq(c*t, beam_waist)), args=[t, beam_waist,sig_las])
+    val = spi.dblquad(norm_laser_integrand, -gauss_limit*sig_las + c*t, gauss_limit*sig_las + c*t, 0, gauss_limit*np.sqrt(omeg_las_sq(c*t, beam_waist, lam)), args=[t, beam_waist,sig_las,lam])
     return val
-
-@jit(nopython = True)
-def trapz_self(x,y):
-    x_diff = x[1:-1] - x[0:-2]
-    y_trap = (y[1:-1] + y[0:-2])/2
-    return sum(x_diff*y_trap)
-
-@jit(nopython = True)
-def feynman_single_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
-    #pbar = pass_list[12]
-    # Determine slice level --> will determine weighting at the end
-
-    # Assumption: all electrons pass through (x0,z0) at crossover most
-    # likely incorrect, but we have nothing else to go off of will only
-    # slightly cause the CTF to show a higher than normal resolution
-
-    # reference current voxel xz position grid from travel path
-    # calculation and current time
-
-    # calculate photon densities at position grid
-
-    # calculate path for current x(t), y(t), z(t) for specific slice, and
-    # voxel m,n. This is the path of the electron, but these values
-    # are placed into the laser equation.
-
-    y_vals = init_y_vals[cur_voxel] - vel*t_range
-    x_vals = y_vals*x_slopes[cur_voxel] + xshift
-    z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = np.sqrt(x_vals**2+y_vals**2)
-    rho_vals_2 = np.sqrt(z_vals**2+y_vals**2)
-    density_vals = norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las)
-    full_vals = hbar*alpha*density_vals*lam/np.sqrt(mass_e**2.*(1+vel**2/c**2))
-    calc = trapz_self(t_range,full_vals)
-    return (not math.isnan(calc))*calc
-
-@jit(nopython = True)
-def feynman_double_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
-    #pbar = pass_list[12]
-    # Determine slice level --> will determine weighting at the end
-
-    # Assumption: all electrons pass through (x0,z0) at crossover most
-    # likely incorrect, but we have nothing else to go off of will only
-    # slightly cause the CTF to show a higher than normal resolution
-
-    # reference current voxel xz position grid from travel path
-    # calculation and current time
-
-    # calculate photon densities at position grid
-
-    # calculate path for current x(t), y(t), z(t) for specific slice, and
-    # voxel m,n. This is the path of the electron, but these values
-    # are placed into the laser equation.
-
-    y_vals = init_y_vals[cur_voxel] - vel*t_range
-    x_vals = y_vals*x_slopes[cur_voxel] + xshift
-    z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = np.sqrt(x_vals**2+y_vals**2)
-    rho_vals_2 = np.sqrt(z_vals**2+y_vals**2)
-    density_vals = norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las) + norm_factor_array*laser(rho_vals_2,x_vals,t_range, beam_waist,sig_las)
-    full_vals = hbar*alpha*density_vals*lam/np.sqrt(mass_e**2.*(1+vel**2/c**2))
-    calc = trapz_self(t_range,full_vals)
-    return (not math.isnan(calc))*calc
-
-@jit(nopython = True)
-def quasi_single_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
-    #pbar = pass_list[12]
-    # Determine slice level --> will determine weighting at the end
-
-    # Assumption: all electrons pass through (x0,z0) at crossover most
-    # likely incorrect, but we have nothing else to go off of will only
-    # slightly cause the CTF to show a higher than normal resolution
-
-    # reference current voxel xz position grid from travel path
-    # calculation and current time
-
-    # calculate photon densities at position grid
-
-    # calculate path for current x(t), y(t), z(t) for specific slice, and
-    # voxel m,n. This is the path of the electron, but these values
-    # are placed into the laser equation.
-
-    y_vals = init_y_vals[cur_voxel] - vel*t_range
-    x_vals = y_vals*x_slopes[cur_voxel] + xshift
-    z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = np.sqrt(x_vals**2+y_vals**2)
-    full_vals = (norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*np.cos(2*np.pi*(z_vals-c*t_range)/lam)**2*np.cos(theta)**2)
-    calc = trapz_self(t_range,full_vals)
-    return (not math.isnan(calc))*calc
-
-@jit(nopython = True)
-def quasi_double_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
-    #pbar = pass_list[12]
-    # Determine slice level --> will determine weighting at the end
-
-    # Assumption: all electrons pass through (x0,z0) at crossover most
-    # likely incorrect, but we have nothing else to go off of will only
-    # slightly cause the CTF to show a higher than normal resolution
-
-    # reference current voxel xz position grid from travel path
-    # calculation and current time
-
-    # calculate photon densities at position grid
-
-    # calculate path for current x(t), y(t), z(t) for specific slice, and
-    # voxel m,n. This is the path of the electron, but these values
-    # are placed into the laser equation.
-
-    y_vals = init_y_vals[cur_voxel] - vel*t_range
-    x_vals = y_vals*x_slopes[cur_voxel] + xshift
-    z_vals = y_vals*z_slopes[cur_voxel] + zshift
-    rho_vals = np.sqrt(x_vals**2+y_vals**2)
-    rho_vals_2 = np.sqrt(z_vals**2+y_vals**2)
-    full_vals = (norm_factor_array*laser(rho_vals,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*np.cos(2*np.pi*(z_vals-c*t_range)/lam)**2*np.cos(theta)**2) + (norm_factor_array*laser(rho_vals_2,z_vals,t_range, beam_waist,sig_las))**2*(1-beta**2*np.cos(2*np.pi*(x_vals-c*t_range)/lam)**2*np.cos(theta)**2)
-    calc = trapz_self(t_range,full_vals)
-    return (not math.isnan(calc))*calc
 
 # electron beam functions
 def omeg_ebeam(y,xover_slope):
@@ -192,25 +75,91 @@ def e_beam_yt(y,sig_ebeam,vel):
     val = 1/np.pi/sig_ebeam**2/vel**2*np.exp(-(2*(y)**2)/(sig_ebeam**2*vel**2))
     return val
 
-@jit(nopython = True,parallel = True)
-def model_caller(init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift,calc_type,laser_num,num_voxels):
-    voxel_grid_phase_data_res = np.zeros(num_voxels)
-    for i in prange(num_voxels):
-        try:
-            if calc_type == 0:
-                if laser_num == 1:
-                    voxel_grid_phase_data_res[i] = quasi_single_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
-                elif laser_num == 2:
-                    voxel_grid_phase_data_res[i] = quasi_double_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
-            elif calc_type == 1:
-                if laser_num == 1:
-                    voxel_grid_phase_data_res[i] = feynman_single_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
-                elif laser_num == 2:
-                    voxel_grid_phase_data_res[i] = feynman_double_calc_func(i,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift)
-        except:
-            print('error in calculating slice integral')
+@cuda.jit
+def model_caller(full_vals,norm_factor_array,t_range,constants_array,calc_type,calc_type_comp,laser_num,laser_num_comp,y_vals_gpu_array, x_vals_gpu_array,z_vals_gpu_array,rho_vals_xy_gpu_array,temporal_vals_gpu_array,omeg_vals_z_gpu_array,spatial_vals_xy_gpu_array,laser_val_z_gpu_array,rho_vals_zy_gpu_array,omeg_vals_x_gpu_array,spatial_vals_zy_gpu_array,laser_val_x_gpu_array,density_gpu_scalar,variable_gpu_array):
+    #constants_array = np.array([
+    #   0:vel,
+    #   1:w0,
+    #   2:sig_las,
+    #   3:theta,
+    #   4:beta,
+    #   5:c,
+    #   6:lam,
+    #   7:hbar,
+    #   8:alpha,
+    #   9:mass_e,
+    #   10:z0
+    i = cuda.grid(1)
+    if i < t_range.size:
+        y_vals_gpu_array[i] = variable_gpu_array[0] - constants_array[0] * t_range[i]
+        x_vals_gpu_array[i] = y_vals_gpu_array[i] * variable_gpu_array[1] + variable_gpu_array[3]
+        z_vals_gpu_array[i] = y_vals_gpu_array[i] * variable_gpu_array[2] + variable_gpu_array[4]
+        rho_vals_xy_gpu_array[i] = math.sqrt(x_vals_gpu_array[i] ** 2 + y_vals_gpu_array[i] ** 2)
+        temporal_vals_gpu_array[i] = math.exp(-(2 * (z_vals_gpu_array[i] - constants_array[5] * t_range[i]) ** 2) / (constants_array[2] ** 2 * constants_array[5] ** 2))
+        omeg_vals_z_gpu_array[i] = constants_array[1] ** 2 * (1 + z_vals_gpu_array[i] ** 2 / constants_array[10] ** 2)
+        spatial_vals_xy_gpu_array[i] = 1 / math.pi / omeg_vals_z_gpu_array[i] * math.exp(-(2 * rho_vals_xy_gpu_array[i] ** 2) / (omeg_vals_z_gpu_array[i]))
+        laser_val_z_gpu_array[i] = spatial_vals_xy_gpu_array[i] * temporal_vals_gpu_array[i]
 
-    return voxel_grid_phase_data_res
+        if (calc_type[0] == calc_type_comp[0]):
+            if (laser_num[0] == laser_num_comp[0]):
+                density_gpu_scalar[i] = norm_factor_array[i] * laser_val_z_gpu_array[i]
+                full_vals[i] = constants_array[7] * constants_array[8] * density_gpu_scalar[i] * constants_array[6] / math.sqrt(constants_array[9] ** 2 * (1 + constants_array[0] ** 2 / constants_array[5] ** 2))
+            elif (laser_num[0] != laser_num_comp[0]):
+                rho_vals_zy_gpu_array[i] = math.sqrt(z_vals_gpu_array[i] ** 2 + y_vals_gpu_array[i] ** 2)
+                omeg_vals_x_gpu_array[i] = constants_array[1] ** 2 * (1 + x_vals_gpu_array[i] ** 2 / constants_array[10] ** 2)
+                spatial_vals_zy_gpu_array[i] = 1 / math.pi / omeg_vals_x_gpu_array[i] * math.exp(-(2 * rho_vals_zy_gpu_array[i] ** 2) / (omeg_vals_x_gpu_array[i]))
+                laser_val_x_gpu_array[i] = spatial_vals_zy_gpu_array[i] * temporal_vals_gpu_array[i]
+
+                density_gpu_scalar[i] = norm_factor_array[i] * (laser_val_z_gpu_array[i] + laser_val_x_gpu_array[i])
+                full_vals[i] = constants_array[7] * constants_array[8] * density_gpu_scalar[i] * constants_array[6] / math.sqrt(constants_array[9] ** 2 * (1 + constants_array[0] ** 2 / constants_array[5] ** 2))
+        elif (calc_type[0] != calc_type_comp[0]):
+            if (laser_num[0] == laser_num_comp[0]):
+                full_vals[i] = (norm_factor_array[i] * laser_val_z_gpu_array[i]) ** 2 * (1 - constants_array[4] ** 2 * math.cos(2 * math.pi * (z_vals_gpu_array[i] - constants_array[5] * t_range[i]) / constants_array[6]) ** 2 * math.cos(constants_array[3]) ** 2)
+            elif (laser_num[0] != laser_num_comp[0]):
+                rho_vals_zy_gpu_array[i] = math.sqrt(z_vals_gpu_array[i] ** 2 + y_vals_gpu_array[i] ** 2)
+                omeg_vals_x_gpu_array[i] = constants_array[1] ** 2 * (1 + x_vals_gpu_array[i] ** 2 / constants_array[10] ** 2)
+                spatial_vals_zy_gpu_array[i] = 1 / math.pi / omeg_vals_x_gpu_array[i] * math.exp(-(2 * rho_vals_zy_gpu_array[i] ** 2) / (omeg_vals_x_gpu_array[i]))
+                laser_val_x_gpu_array[i] = spatial_vals_zy_gpu_array[i] * temporal_vals_gpu_array[i]
+                full_vals[i] = (norm_factor_array[i] * laser_val_z_gpu_array[i] ** 2 * (1 - constants_array[4] ** 2 * math.cos(2 * math.pi * (z_vals_gpu_array[i] - constants_array[5] * t_range[i]) / constants_array[6]) ** 2 * math.cos(constants_array[3]) ** 2)) + (norm_factor_array[i] * laser_val_x_gpu_array[i] ** 2 * (1 - constants_array[4] ** 2 * math.cos(2 * math.pi * (x_vals_gpu_array[i] - constants_array[5] * t_range[i]) / constants_array[6]) ** 2 * math.cos(constants_array[3]) ** 2))
+
+@jit(nopython=True,parallel=True)
+def trapz_self(a,b):
+    return sum((a[1:-1] - a[0:-2]) * ((b[1:-1] + b[0:-2]) / 2))
+
+@jit(nopython=True,parallel=True)
+def model_dist(full_vals_gpu, norm_factor_gpu_array, t_range_extended, t_range_gpu,
+                                                     constants_gpu_array, calc_type_gpu, calc_type_comp, laser_num_gpu,
+                                                     laser_num_comp, y_vals_gpu_array, x_vals_gpu_array,
+                                                     z_vals_gpu_array, rho_vals_xy_gpu_array, temporal_vals_gpu_array,
+                                                     omeg_vals_z_gpu_array, spatial_vals_xy_gpu_array,
+                                                     laser_val_z_gpu_array, rho_vals_zy_gpu_array,
+                                                     omeg_vals_x_gpu_array, spatial_vals_zy_gpu_array,
+                                                     laser_val_x_gpu_array, density_gpu_scalar,init_y_vals,x_slopes,z_slopes,z_shift,x_shift,num_voxels):
+
+    threadsperblock = 32
+    blockspergrid = (t_range_extended.size + (threadsperblock - 1))
+
+    voxel_grid_phase_data_unpacked = np.zeros(num_voxels)
+
+    variable_array = np.zeros(5)
+    for cur_voxel in prange(num_voxels):
+        variable_array[0] = init_y_vals[cur_voxel]
+        variable_array[1] = x_slopes[cur_voxel]
+        variable_array[2] = z_slopes[cur_voxel]
+        variable_array[3] = x_shift
+        variable_array[4] = z_shift
+        variable_gpu_array = cuda.to_device(variable_array)
+        model_caller[blockspergrid, threadsperblock](full_vals_gpu, norm_factor_gpu_array, t_range_gpu,
+                                                     constants_gpu_array, calc_type_gpu, calc_type_comp, laser_num_gpu,
+                                                     laser_num_comp, y_vals_gpu_array, x_vals_gpu_array,
+                                                     z_vals_gpu_array, rho_vals_xy_gpu_array, temporal_vals_gpu_array,
+                                                     omeg_vals_z_gpu_array, spatial_vals_xy_gpu_array,
+                                                     laser_val_z_gpu_array, rho_vals_zy_gpu_array,
+                                                     omeg_vals_x_gpu_array, spatial_vals_zy_gpu_array,
+                                                     laser_val_x_gpu_array, density_gpu_scalar, variable_gpu_array)
+        full_vals = full_vals_gpu.copy_to_host()
+        calc = trapz_self(t_range_extended, full_vals)
+        voxel_grid_phase_data_unpacked[cur_voxel] = (not math.isnan(calc)) * calc
 
 def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w0=100e3,E_pulse=1,voxel_granularity=9,slice_granularity=9,focus_granularity=1,num_points_to_add=2000,size_direct_beam=100e3,gauss_limit=3):
     print('Seeding workspace with relevant information.')
@@ -389,7 +338,7 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
 
     #input('beginning integral')
     for i in np.arange(t_bounds.size):
-        val_int = laser_sum(t_bounds[i], gauss_limit, sig_las, w0)
+        val_int = laser_sum(t_bounds[i], gauss_limit, sig_las, w0, lam)
         laser_sum_array[i] = val_int[0]
         laser_sum_err[i] = val_int[1]
 
@@ -496,6 +445,46 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
         x_slopes[cur_voxel] = voxel_grid_slope_x_data[m,n]
         z_slopes[cur_voxel] = voxel_grid_slope_z_data[m,n]
 
+    norm_factor_gpu_array = cuda.to_device(norm_factor_array.astype(float))
+    t_range_gpu = cuda.to_device(t_range_extended.astype(float))
+
+    constants_array = np.ones(11)
+    constants_array[0] = vel
+    constants_array[1] = w0
+    constants_array[2] = sig_las
+    constants_array[3] = theta
+    constants_array[4] = beta
+    constants_array[5] = c
+    constants_array[6] = lam
+    constants_array[7] = hbar
+    constants_array[8] = alpha
+    constants_array[9] = mass_e
+    z0 = math.pi * constants_array[1] ** 2 / constants_array[6]  # Rayleigh range, nm
+    constants_array[10] = z0
+    #constants_array = np.array([vel, w0, sig_las, theta, beta, c, lam, hbar, alpha, mass_e, calc_type, laser_num,num_voxels])
+    constants_array = constants_array.astype(float)
+    constants_gpu_array = cuda.to_device(constants_array)
+    y_vals_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    x_vals_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    z_vals_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    rho_vals_xy_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    temporal_vals_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    omeg_vals_z_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    spatial_vals_xy_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    laser_val_z_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    rho_vals_zy_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    omeg_vals_x_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    spatial_vals_zy_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    laser_val_x_gpu_array = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    density_gpu_scalar = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+    calc_type_gpu = cuda.to_device(np.array([calc_type]).astype(int))
+    laser_num_gpu = cuda.to_device(np.array([laser_num]).astype(int))
+    calc_type_comp = cuda.to_device(np.array([0]).astype(int))
+    laser_num_comp = cuda.to_device(np.array([1]).astype(int))
+    full_vals_gpu = cuda.to_device(np.zeros(t_range_extended.size).astype(float))
+
+    # must cast all pre_gpu values to float
+
     pbar = tqdm.tqdm(total=z_drift.size)
     for zin in np.arange(z_drift.size):
 
@@ -505,34 +494,11 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
 
             z_shift = z_drift[zin]
             x_shift = x_drift[xin]
+            voxel_grid_phase_data_unpacked = np.zeros(num_voxels)
 
-            '''
-            method_list = list()
-            method_list.append(init_y_vals)
-            method_list.append(x_slopes)
-            method_list.append(z_slopes)
-            method_list.append(norm_factor_array)
-            method_list.append(vel)
-            method_list.append(w0)
-            method_list.append(sig_las)
-            method_list.append(theta)
-            method_list.append(beta)
-            method_list.append(c)
-            method_list.append(lam)
-            method_list.append(t_range_extended)
-            method_list.append(hbar)
-            method_list.append(alpha)
-            method_list.append(mass_e)
-            method_list.append(z_shift)
-            method_list.append(x_shift)
-            '''
+            variable_array = np.zeros(5)
+            model_dist(full_vals_gpu,norm_factor_gpu_array,t_range_gpu,t_range_extended,constants_gpu_array,calc_type_gpu,calc_type_comp, laser_num_gpu, laser_num_comp, y_vals_gpu_array, x_vals_gpu_array,z_vals_gpu_array,rho_vals_xy_gpu_array,temporal_vals_gpu_array,omeg_vals_z_gpu_array,spatial_vals_xy_gpu_array,laser_val_z_gpu_array,rho_vals_zy_gpu_array,omeg_vals_x_gpu_array,spatial_vals_zy_gpu_array,laser_val_x_gpu_array,density_gpu_scalar,init_y_vals,x_slopes,z_slopes,z_shift,x_shift,num_voxels)
 
-            voxel_grid_phase_data_unpacked = model_caller(init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,theta,beta,c,lam,t_range_extended,hbar,alpha,mass_e,z_shift,x_shift,calc_type,laser_num,num_voxels)
-
-            #print('Sending results from GPU to CPU')
-            #voxel_grid_phase_data_unpacked = cp.array(voxel_grid_phase_data_res).get()
-
-            #print('Successful transfer')
             # generate map distribution of electron beam, summing and averaging over
             # all slices
 
@@ -561,10 +527,11 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
             else:
                 voxel_grid_cumulative_phase_data = final_phase_data
 
+            elapsed = time.time() - t
+            print(elapsed)
+
         pbar.update(1)
     pbar.close()
-    elapsed = time.time() - t
-    print(elapsed)
 
     data['results'] = voxel_grid_cumulative_phase_data.tolist()
     return data
@@ -605,3 +572,4 @@ def main(argv):
 
 if __name__ == '__main__':
     main(sys.argv)
+    input('awaiting')
