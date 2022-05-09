@@ -5,12 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="bafacdca-fc33-4f17-8d0b-d2907ea4f158" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/PPPP_calculation_numba_gui.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/PPPP_calculation.py" beforeDir="false" afterPath="$PROJECT_DIR$/PPPP_calculation.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/PPPP_calculation_numba.py" beforeDir="false" afterPath="$PROJECT_DIR$/PPPP_calculation_numba.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/PPPP_calculation_numba_with_cuda.py" beforeDir="false" afterPath="$PROJECT_DIR$/PPPP_calculation_numba_with_cuda.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/sample.json" beforeDir="false" afterPath="$PROJECT_DIR$/sample.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/PPPP_calculation_numba_gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/PPPP_calculation_numba_gui.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sample.json" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -57,7 +54,7 @@
       <recent name="C:\Users\dudan\Documents\GitHub\PPPP" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.PPPP_calculation">
+  <component name="RunManager" selected="Python.PPPP_calculation_numba_gui">
     <configuration name="PPPP_calculation" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="PPPP" />
       <option name="INTERPRETER_OPTIONS" value="" />
@@ -165,10 +162,10 @@
     </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.PPPP_calculation_numba_gui" />
         <item itemvalue="Python.PPPP_calculation" />
         <item itemvalue="Python.PPPP_calculation_numba" />
         <item itemvalue="Python.PPPP_calculation_numba_with_cuda" />
-        <item itemvalue="Python.PPPP_calculation_numba_gui" />
         <item itemvalue="Python.PPPP_calculation_cpu_gpu" />
       </list>
     </recent_temporary>

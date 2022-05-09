@@ -220,7 +220,7 @@ def model_caller(init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,
     return voxel_grid_phase_data_res
 
 def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w0=100e3,E_pulse=1,voxel_granularity=9,slice_granularity=9,focus_granularity=1,num_points_to_add=2000,size_direct_beam=100e3,gauss_limit=3,ebeam_dxover=300e-3,las_wav=500,ebeam_vel=2e8):
-    print('Seeding workspace with relevant information.')
+    # print('Seeding workspace with relevant information.')
 
     # Initializing fundamental constants
     planck = 6.626e-34*1e9*1e12 #nJ.*ps
@@ -257,7 +257,7 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
     # E_pulse # nJ
     n_pulse = E_pulse/E_photon # number of photons per pulse
 
-    print('preparing electron slices')
+    # print('preparing electron slices')
 
     # Beginning slice separation in time and space (y-direction)
     sig_ratios = np.array([-gauss_limit, -1.6449, -1.2816, -1.0364, -0.8416, -0.6745, -0.5244, -0.3853, -0.2533, -0.1257, -0.0627]) # limit, 0.9 0.8 0.7 0.6 0.5 0.4 0.3 0.2 0.1 0.05
@@ -308,7 +308,7 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
 
     y_bounds = t_bounds*vel
 
-    print('calculating the electron beam normalization constants')
+    # print('calculating the electron beam normalization constants')
     # normalizing the electron beam in the xz plane (orthogonal to principal electron-optical axis) and the y-direction
     e_beam_xz_integral = spi.quad(lambda x: 2*np.pi*x*e_beam_xz(x,size_direct_beam), 0, gauss_limit*size_direct_beam)
     e_beam_xz_norm = 1/e_beam_xz_integral[0]
@@ -339,7 +339,7 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
         y_range[l] = (y_bounds[l]+y_bounds[l+1])/2
         t_range[l] = (t_bounds[l]+t_bounds[l+1])/2
 
-    print('expanding the integral space')
+    # print('expanding the integral space')
     # setting up temporal calculation array for trapz. increases the granularity with a focus on the central region
     min_t_vals_sep = num_points_to_add
     num_points_add = lambda t: - 1 / (1 + np.exp(-np.absolute(t) / (5 * t_range[-1]))) + 1
@@ -351,7 +351,7 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
         t_range_extended[tot_added:tot_added + add_points[l]] = np.linspace(t_bounds[l], t_bounds[l + 1],add_points[l])
         tot_added = tot_added + add_points[l]
 
-    print('calculating slopes of travel')
+    # print('calculating slopes of travel')
     # setting up slopes for the electrons to take in the x and z directions as a function of initial position
     if (sig_ebeam < sig_las):
         y_dist_from_center = gauss_limit*sig_las*vel
@@ -364,7 +364,7 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
             voxel_grid_slope_x_data[j,:] = np.linspace(-gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel,xover_slope),gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel,xover_slope),voxel_granularity)/y_dist_from_center
             voxel_grid_slope_z_data[:,j] = np.linspace(-gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel,xover_slope),gauss_limit*omeg_ebeam(gauss_limit*sig_ebeam*vel,xover_slope),voxel_granularity)/y_dist_from_center
 
-    print('weighting electron beam in the y direction')
+    # print('weighting electron beam in the y direction')
     ## calculating voxel weights... need to find integration bounds for each voxel point at the final position of the e-beam ("detector")
     # voxel_xz_grid_weights = zeros(voxel_granularity, voxel_granularity);
     voxel_y_weights = np.zeros(slice_granularity)
@@ -376,7 +376,7 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
         elif (ebeam_type == 1):
             voxel_y_weights[l] = e_beam_yt_norm*(y_bounds[l + 1] - y_bounds[l])
 
-    print('normalizing the laser beam over time')
+    # print('normalizing the laser beam over time')
     ## establishing interpolated normalization for laser
     laser_sum_array = np.zeros_like(t_bounds)
     laser_sum_err = np.zeros_like(t_bounds)
@@ -392,7 +392,7 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
     norm_laser_interp = spip.interp1d(t_bounds, norm_factor_small_array, kind='cubic')
     norm_factor_array = norm_laser_interp(t_range_extended)
 
-    print('normalizing the electron beam in the xz plane')
+    # print('normalizing the electron beam in the xz plane')
     # calculating electron beam xz weights
     voxel_xz_focus_weights = np.zeros((focus_granularity, focus_granularity))
     num_condense = np.zeros((focus_granularity, focus_granularity))
@@ -412,7 +412,7 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
         xz_focus_bounds = 0
         voxel_xz_grid_weights = np.ones((voxel_granularity, voxel_granularity))
 
-    print('calculating the summation for condensing to the focal granularity')
+    # print('calculating the summation for condensing to the focal granularity')
     if (focus_granularity != 1):
         for u in np.arange(focus_granularity):
             for v in np.arange(focus_granularity):
@@ -490,7 +490,9 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
         x_slopes[cur_voxel] = voxel_grid_slope_x_data[m,n]
         z_slopes[cur_voxel] = voxel_grid_slope_z_data[m,n]
 
-    pbar = tqdm.tqdm(total=z_drift.size)
+    #time_init = time.time()
+    #GUIObj.curRunBar.setRange(0,z_drift.size-1)
+    pbar = tqdm.tqdm(total=z_drift.size,desc='Current Calculation Progress',position=1,leave=False)
     for zin in np.arange(z_drift.size):
 
         for xin in np.arange(x_drift.size):
@@ -555,10 +557,17 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
             else:
                 voxel_grid_cumulative_phase_data = final_phase_data
 
-        pbar.update(1)
-    pbar.close()
-    elapsed = time.time() - t
-    print(elapsed)
+            pbar.update(1)
+        pbar.close()
+        '''
+        GUIObj.curRunBar.setValue(zin)
+        total_elapsed = time.time() - time_init
+        time_remain = (z_drift.size - 1 - zin)*total_elapsed/(zin+1)
+        GUIObj.curRunBarText.setText("Current Run Progress - Time Remaining: " + str(int(time_remain)) + "s")
+        time.sleep(0.05)
+        '''
+    # print(elapsed)
+    # GUIObj.curRunBarText.setText("Current Run Progress")
 
     data = voxel_grid_cumulative_phase_data
     return data
@@ -583,7 +592,7 @@ class WidgetGallery(QDialog):
         self.calculationList = []
         self.activeRow = 0
 
-        self.setMinimumSize(750, 875)
+        self.setMinimumSize(750, 750)
         self.originalPalette = QApplication.palette()
 
         styleComboBox = QComboBox()
@@ -754,6 +763,7 @@ class WidgetGallery(QDialog):
         self.queueBoxLayout.addWidget(self.runCalcButton,4,4,2,1)
         self.queueBox.setLayout(self.queueBoxLayout)
 
+        '''
         self.fullRunBarText = QLabel("Full Run Progress")
         self.fullRunBar = QProgressBar()
         self.fullRunBar.setRange(0, 1)
@@ -770,13 +780,14 @@ class WidgetGallery(QDialog):
         self.progBoxLayout.addWidget(self.fullRunBarText, 2, 0, 1, 1)
         self.progBoxLayout.addWidget(self.fullRunBar, 3, 0, 1, 1)
         self.progBox.setLayout(self.progBoxLayout)
+        '''
 
         self.simulTabLayout.addWidget(self.meshGroupBox, 0, 0, 1, 1)
         self.simulTabLayout.addWidget(self.laserPropBox, 0, 1, 1, 1)
         self.simulTabLayout.addWidget(self.elecPropBox, 0, 2, 1, 1)
         self.simulTabLayout.addWidget(self.calcPropBox, 1, 0, 1, 3)
         self.simulTabLayout.addWidget(self.queueBox, 2, 0, 2, 3)
-        self.simulTabLayout.addWidget(self.progBox, 4, 0, 1, 3)
+        # self.simulTabLayout.addWidget(self.progBox, 4, 0, 1, 3)
         self.simulTabLayout.setRowStretch(5,1)
         self.simulationTab.setLayout(self.simulTabLayout)
 
@@ -789,7 +800,6 @@ class WidgetGallery(QDialog):
         self.overallTabWidget.addTab(self.analysisTab, "&Analysis")
 
     def calcLoop(self):
-
         print("Initializing parallel CPU computation")
 
         PPPP_calculator(self,0, 0, 0, 10, 10, 100e3, 100, 9,
@@ -810,11 +820,12 @@ class WidgetGallery(QDialog):
                              int(self.calcTypeBox.currentIndex()),int(self.lasNumBox.currentIndex())+1,
                              int(self.ebeamBox.currentIndex())]
         '''
-        self.fullRunBar.setRange(0,len(self.calculationList)-1)
-
-        for i in np.arange(len(self.calculationList)):
+        #full_init = time.time()
+        #self.fullRunBar.setRange(0,len(self.calculationList)-1)
+        fullbar = tqdm.tqdm(total=len(self.calculationList),desc='Full Calculation Progress',position=0,leave=True)
+        for full_calc_point in np.arange(len(self.calculationList)):
             data = {}
-            curList = self.calculationList[i]
+            curList = self.calculationList[full_calc_point]
             voxel_granularity = int(curList[0])
             slice_granularity = int(curList[1])
             focus_granularity = int(curList[2])
@@ -847,7 +858,18 @@ class WidgetGallery(QDialog):
             #plt.figure()
             #plt.imshow(fig_data)
             #plt.show()
-            self.fullRunBar.setValue(i)
+            '''
+            self.fullRunBar.setValue(full_calc_point)
+            full_elapsed = time.time() - full_init
+            full_remain = (len(self.calculationList) - 1 - full_calc_point) * full_elapsed / (full_calc_point + 1)
+            time.sleep(0.5)
+            self.fullRunBarText.setText("Full Run Progress - Time Remaining: " + str(int(full_remain)) + "s")
+            '''
+            fullbar.update(1)
+        fullbar.close()
+
+        # print(elapsed)
+        # self.fullRunBarText.setText("Full Run Progress")
 
     def addCalc(self):
         addArray = np.array([int(self.voxelTextBox.text()),int(self.sliceTextBox.text()),int(self.focusTextBox.text()),
