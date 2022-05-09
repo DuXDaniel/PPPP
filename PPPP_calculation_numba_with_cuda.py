@@ -520,8 +520,8 @@ def main(argv):
     #with cp.cuda.Device(0):
     #    mempool.set_limit(fraction = 0.75)  # 75% gpu usage in memory
 
-    voxel_granularity = 81
-    slice_granularity = 121
+    voxel_granularity = 49
+    slice_granularity = 49
     focus_granularity = 1
     num_points_to_add = 2000
     gauss_limit = 3
@@ -537,6 +537,8 @@ def main(argv):
     w0 = 100e3 # nm
 
     E_pulse = 22.25e3 # nJ
+    PPPP_calculator(0, 0, 0, 10, 10, 100e3, 100, 9,
+                    9, 1, 10, 100e3, 3)
     data = PPPP_calculator(calc_type,laser_num,ebeam_type,sig_ebeam,sig_las,w0,E_pulse,voxel_granularity,slice_granularity,focus_granularity,num_points_to_add,size_direct_beam,gauss_limit)
 
     json_data = json.dumps(data)

@@ -601,7 +601,7 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
             method_list.append(z_shift)
             method_list.append(x_shift)
 
-            voxel_grid_phase_data_unpacked = np.zeros(num_voxels)
+            voxel_grid_phase_data_res = np.zeros(num_voxels)
 
             try:
                 if calc_type == 0:
@@ -687,6 +687,8 @@ def main(argv):
     w0 = 100e3 # nm
 
     E_pulse = 22.25e3 # nJ
+    PPPP_calculator(0, 0, 0, 10, 10, 100e3, 100, 9,
+                    9, 1, 10, 100e3, 3)
     data = PPPP_calculator(calc_type,laser_num,ebeam_type,sig_ebeam,sig_las,w0,E_pulse,voxel_granularity,slice_granularity,focus_granularity,num_points_to_add,size_direct_beam,gauss_limit)
     plt.figure()
     plt.imshow(data)

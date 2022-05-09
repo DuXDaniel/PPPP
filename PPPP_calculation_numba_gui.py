@@ -8,6 +8,13 @@ import time
 import tqdm
 import sys
 import json
+from fbs_runtime.application_context.PyQt5 import ApplicationContext
+from PyQt5.QtCore import QDateTime, Qt, QTimer
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDateTimeEdit,
+        QDial, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+        QProgressBar, QPushButton, QRadioButton, QScrollBar, QSizePolicy,
+        QSlider, QSpinBox, QStyleFactory, QTableWidget, QTabWidget, QTextEdit,
+        QVBoxLayout, QWidget, QHeaderView, QSpacerItem, QTableWidgetItem,QTableWidgetSelectionRange,QAbstractItemView)
 
 @jit(nopython = True)
 def temporal_gauss(z,t,sig_las):
@@ -212,7 +219,7 @@ def model_caller(init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,w0,sig_las,
 
     return voxel_grid_phase_data_res
 
-def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w0=100e3,E_pulse=1,voxel_granularity=9,slice_granularity=9,focus_granularity=1,num_points_to_add=2000,size_direct_beam=100e3,gauss_limit=3):
+def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w0=100e3,E_pulse=1,voxel_granularity=9,slice_granularity=9,focus_granularity=1,num_points_to_add=2000,size_direct_beam=100e3,gauss_limit=3,ebeam_dxover=300e-3,las_wav=500,ebeam_vel=2e8):
     print('Seeding workspace with relevant information.')
 
     # Initializing fundamental constants
@@ -222,13 +229,13 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
     mass_e = 9.11e-31*1e15 # pg
 
     c = 2.9979e8*1e9*1e-12 # nm./ps
-    lam = 500 # nm
+    lam = las_wav # nm
     theta = 0
 
-    xover_slope = 3e-3/300e-3 # 3 mm in 300 mm of travel
+    xover_slope = 3e-3/ebeam_dxover # 3 mm in 300 mm of travel
     xover_angle = np.arctan(xover_slope) # degrees
-    vel = 2.33e8*1e9/1e12 # velocity of electron, 200 kV, nm./ps
-    beta = vel/c
+    vel = ebeam_vel*1e9/1e12 # velocity of electron, 200 kV, nm./ps
+    beta = ebeam_vel/c
 
     # Initializing simulation parameters
     # voxel_granularity
@@ -249,19 +256,6 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
     E_photon = planck*c/lam # nJ
     # E_pulse # nJ
     n_pulse = E_pulse/E_photon # number of photons per pulse
-
-    data = {}
-    data['model'] = calc_type
-    data['laser_geometry'] = laser_num
-    data['ebeam_geometry'] = ebeam_type
-    if (ebeam_type == 0):
-        data['sig_ebeam'] = sig_ebeam
-        data['sig_las'] = sig_las
-    else:
-        data['sig_ebeam'] = sig_las
-        data['sig_las'] = sig_las
-    data['beam_waist'] = w0
-    data['E_pulse'] = E_pulse
 
     print('preparing electron slices')
 
@@ -566,7 +560,7 @@ def PPPP_calculator(calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_las=1,w
     elapsed = time.time() - t
     print(elapsed)
 
-    data['results'] = voxel_grid_cumulative_phase_data.tolist()
+    data = voxel_grid_cumulative_phase_data
     return data
 
 def main(argv):
@@ -575,35 +569,320 @@ def main(argv):
     #with cp.cuda.Device(0):
     #    mempool.set_limit(fraction = 0.75)  # 75% gpu usage in memory
 
-    voxel_granularity = 49
-    slice_granularity = 49
-    focus_granularity = 1
-    num_points_to_add = 2000
-    gauss_limit = 3
+    #appctxt = ApplicationContext()
+    app = QApplication([])
+    gallery = WidgetGallery()
+    gallery.show()
+    app.exec()
+    #sys.exit(appctxt.app.exec())
 
-    size_direct_beam = 100e3 # ebeam radius in nm
+class WidgetGallery(QDialog):
+    def __init__(self, parent=None):
+        super(WidgetGallery, self).__init__(parent)
 
-    calc_type = 1 # 1 for quasiclassical, 0 for feynman
-    laser_num = 2 # 1 for single laser, 2 for double laser
-    ebeam_type = 0 # 0 for pulsed, 1 for uniform
+        self.calculationList = []
+        self.activeRow = 0
 
-    sig_ebeam = 10 # time resolution of ebeam, ps
-    sig_las = 10 # ps
-    w0 = 100e3 # nm
+        self.setMinimumSize(750, 875)
+        self.originalPalette = QApplication.palette()
 
-    E_pulse = 22.25e3 # nJ
-    PPPP_calculator(0, 0, 0, 10, 10, 100e3, 100, 9,
-                    9, 1, 10, 100e3, 3)
-    data = PPPP_calculator(calc_type,laser_num,ebeam_type,sig_ebeam,sig_las,w0,E_pulse,voxel_granularity,slice_granularity,focus_granularity,num_points_to_add,size_direct_beam,gauss_limit)
+        styleComboBox = QComboBox()
+        styleComboBox.addItems(QStyleFactory.keys())
 
-    json_data = json.dumps(data)
-    with open("sample.json", "w") as outfile:
-        outfile.write(json_data)
+        styleLabel = QLabel("&Style:")
+        styleLabel.setBuddy(styleComboBox)
 
-    fig_data = data['results']
-    plt.figure()
-    plt.imshow(fig_data)
-    plt.show()
+        self.useStylePaletteCheckBox = QCheckBox("&Use style's standard palette")
+        self.useStylePaletteCheckBox.setChecked(True)
+
+        disableWidgetsCheckBox = QCheckBox("&Disable widgets")
+
+        self.overallTabWidget()
+
+        styleComboBox.activated[str].connect(self.changeStyle)
+        self.useStylePaletteCheckBox.toggled.connect(self.changePalette)
+        disableWidgetsCheckBox.toggled.connect(self.overallTabWidget.setDisabled)
+
+        topLayout = QHBoxLayout()
+        topLayout.addWidget(styleLabel)
+        topLayout.addWidget(styleComboBox)
+        topLayout.addStretch(1)
+        topLayout.addWidget(self.useStylePaletteCheckBox)
+        topLayout.addWidget(disableWidgetsCheckBox)
+
+        mainLayout = QGridLayout()
+        mainLayout.addLayout(topLayout, 0, 0)
+        mainLayout.addWidget(self.overallTabWidget, 1, 0, 1, 1)
+        #mainLayout.setRowStretch(1, 1)
+        #.setRowStretch(2, 1)
+        #mainLayout.setColumnStretch(0, 1)
+        #mainLayout.setColumnStretch(1, 1)
+        self.setLayout(mainLayout)
+
+        self.setWindowTitle("Styles")
+        self.changeStyle('Windows')
+
+    def overallTabWidget(self):
+        self.overallTabWidget = QTabWidget()
+        self.overallTabWidget.setSizePolicy(QSizePolicy.Preferred,
+                QSizePolicy.Ignored)
+
+        self.simulationTab = QWidget()
+        self.simulTabLayout = QGridLayout()
+
+        self.meshGroupBox = QGroupBox("Mesh Definitions")
+        self.laserPropBox = QGroupBox("Laser Properties")
+        self.elecPropBox = QGroupBox("Electron Properties")
+        self.calcPropBox = QGroupBox("Calculation Properties")
+        self.queueBox = QGroupBox("Calculation Queue")
+        self.progBox = QGroupBox("Progress Box")
+
+        self.voxelText = QLabel("xz-axes granularity")
+        self.voxelTextBox = QLineEdit("9")
+        self.sliceText = QLabel("y-axis granularity")
+        self.sliceTextBox = QLineEdit("9")
+        self.focusText = QLabel("xz-scan granularity")
+        self.focusTextBox = QLineEdit("1")
+        self.intPointText = QLabel("additional integration")
+        self.intPointTextBox = QLineEdit("2000")
+        self.intLimitText = QLabel("integration bounds")
+        self.intLimitTextBox = QLineEdit("3")
+
+        self.meshLayout = QGridLayout()
+        self.meshLayout.addWidget(self.voxelText, 0, 0, 1, 1)
+        self.meshLayout.addWidget(self.voxelTextBox, 1, 0, 1, 1)
+        self.meshLayout.addWidget(self.sliceText, 2, 0, 1, 1)
+        self.meshLayout.addWidget(self.sliceTextBox, 3, 0, 1, 1)
+        self.meshLayout.addWidget(self.focusText, 4, 0, 1, 1)
+        self.meshLayout.addWidget(self.focusTextBox, 5, 0, 1, 1)
+        self.meshLayout.addWidget(self.intPointText, 6, 0, 1, 1)
+        self.meshLayout.addWidget(self.intPointTextBox, 7, 0, 1, 1)
+        self.meshLayout.addWidget(self.intLimitText, 8, 0, 1, 1)
+        self.meshLayout.addWidget(self.intLimitTextBox, 9, 0, 1, 1)
+        self.meshLayout.setRowStretch(10,1)
+        self.meshLayout.setVerticalSpacing(0)
+        self.meshGroupBox.setLayout(self.meshLayout)
+
+        self.sigLasText = QLabel("pulse duration (ps)")
+        self.sigLasTextBox = QLineEdit("10")
+        self.waistText = QLabel("beam waist (nm)")
+        self.waistTextBox = QLineEdit("100e3")
+        self.waveText = QLabel("wavelength (nm)")
+        self.waveTextBox = QLineEdit("500")
+        self.energyText = QLabel("pulse energy (nJ)")
+        self.energyTextBox = QLineEdit("1")
+
+        self.laserPropLayout = QGridLayout()
+        self.laserPropLayout.addWidget(self.sigLasText, 0, 0, 1, 1)
+        self.laserPropLayout.addWidget(self.sigLasTextBox, 1, 0, 1, 1)
+        self.laserPropLayout.addWidget(self.waistText, 2, 0, 1, 1)
+        self.laserPropLayout.addWidget(self.waistTextBox, 3, 0, 1, 1)
+        self.laserPropLayout.addWidget(self.waveText, 4, 0, 1, 1)
+        self.laserPropLayout.addWidget(self.waveTextBox, 5, 0, 1, 1)
+        self.laserPropLayout.addWidget(self.energyText, 6, 0, 1, 1)
+        self.laserPropLayout.addWidget(self.energyTextBox, 7, 0, 1, 1)
+        self.laserPropLayout.setRowStretch(8, 1)
+        self.laserPropLayout.setVerticalSpacing(0)
+        self.laserPropBox.setLayout(self.laserPropLayout)
+
+        self.sigebeamText = QLabel("pulse duration (ps)")
+        self.sigebeamTextBox = QLineEdit("10")
+        self.ebeamXOverText = QLabel("crossover distance (mm)")
+        self.ebeamXOverTextBox = QLineEdit("300e-3")
+        self.ebeamVelText = QLabel("velocity (m/s)")
+        self.ebeamVelTextBox = QLineEdit("2e8")
+        self.ebeamXOverSizeText = QLabel("crossover size (nm)")
+        self.ebeamXOverSizeTextBox = QLineEdit("100e3")
+
+        self.ebeamPropLayout = QGridLayout()
+        self.ebeamPropLayout.addWidget(self.sigebeamText, 0, 0, 1, 1)
+        self.ebeamPropLayout.addWidget(self.sigebeamTextBox, 1, 0, 1, 1)
+        self.ebeamPropLayout.addWidget(self.ebeamXOverText, 2, 0, 1, 1)
+        self.ebeamPropLayout.addWidget(self.ebeamXOverTextBox, 3, 0, 1, 1)
+        self.ebeamPropLayout.addWidget(self.ebeamXOverSizeText, 4, 0, 1, 1)
+        self.ebeamPropLayout.addWidget(self.ebeamXOverSizeTextBox, 5, 0, 1, 1)
+        self.ebeamPropLayout.addWidget(self.ebeamVelText, 6, 0, 1, 1)
+        self.ebeamPropLayout.addWidget(self.ebeamVelTextBox, 7, 0, 1, 1)
+        self.ebeamPropLayout.setRowStretch(8, 1)
+        self.ebeamPropLayout.setVerticalSpacing(0)
+        self.elecPropBox.setLayout(self.ebeamPropLayout)
+
+        self.calcTypeText = QLabel("Model")
+        self.calcTypeBox = QComboBox()
+        self.calcTypeBox.addItem('Feynman')
+        self.calcTypeBox.addItem('Quasiclassical')
+
+        self.lasNumText = QLabel("Laser Number")
+        self.lasNumBox = QComboBox()
+        self.lasNumBox.addItem('One')
+        self.lasNumBox.addItem('Two')
+
+        self.ebeamText = QLabel("Electron Emission")
+        self.ebeamBox = QComboBox()
+        self.ebeamBox.addItem('Pulsed')
+        self.ebeamBox.addItem('Uniform')
+
+        self.calcPropLayout = QGridLayout()
+        self.calcPropLayout.addWidget(self.calcTypeText, 0, 0, 1, 1)
+        self.calcPropLayout.addWidget(self.calcTypeBox, 0, 1, 1, 1)
+        self.calcPropLayout.addWidget(self.lasNumText, 0, 2, 1, 1)
+        self.calcPropLayout.addWidget(self.lasNumBox, 0, 3, 1, 1)
+        self.calcPropLayout.addWidget(self.ebeamText, 0, 4, 1, 1)
+        self.calcPropLayout.addWidget(self.ebeamBox, 0, 5, 1, 1)
+        self.calcPropLayout.setVerticalSpacing(0)
+        self.calcPropBox.setLayout(self.calcPropLayout)
+
+        self.tableWidget = QTableWidget(0, 16)
+        self.tableWidget.setHorizontalHeaderLabels(["n_xz","n_y","f_xz","n_int","r_int","sig_las (ps)","w0 (nm)","lambda (nm)","E_pulse (nJ)","sig_ebeam (ps)","d_xover (nm)","s_xover (nm)","vel (m/s)","model","lasers","emission"])
+        self.header = self.tableWidget.horizontalHeader()
+        self.header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.tableWidget.setSelectionMode(QAbstractItemView.ContiguousSelection)
+        self.tableWidget.cellClicked.connect(self.cellClickedResponse)
+        self.addQueueButton = QPushButton("Add Calculation")
+        self.addQueueButton.setDefault(True)
+        self.addQueueButton.clicked.connect(self.addCalc)
+        self.rmvQueueButton = QPushButton("Remove Calculation")
+        self.rmvQueueButton.setDefault(True)
+        self.rmvQueueButton.clicked.connect(self.removeCalc)
+        self.runCalcButton = QPushButton("Run Calculation")
+        self.runCalcButton.setDefault(True)
+        self.runCalcButton.clicked.connect(self.calcLoop)
+        self.queueBoxLayout = QGridLayout()
+        self.queueBoxLayout.addWidget(self.tableWidget,0,0,6,3)
+        self.queueBoxLayout.addWidget(self.addQueueButton,0,4,2,1)
+        self.queueBoxLayout.addWidget(self.rmvQueueButton,2,4,2,1)
+        self.queueBoxLayout.addWidget(self.runCalcButton,4,4,2,1)
+        self.queueBox.setLayout(self.queueBoxLayout)
+
+        self.fullRunBarText = QLabel("Full Run Progress")
+        self.fullRunBar = QProgressBar()
+        self.fullRunBar.setRange(0, 1)
+        self.fullRunBar.setValue(0)
+
+        self.curRunBarText = QLabel("Current Run Progress")
+        self.curRunBar = QProgressBar()
+        self.curRunBar.setRange(0, 1)
+        self.curRunBar.setValue(0)
+
+        self.progBoxLayout = QGridLayout()
+        self.progBoxLayout.addWidget(self.curRunBarText, 0, 0, 1, 1)
+        self.progBoxLayout.addWidget(self.curRunBar, 1, 0, 1, 1)
+        self.progBoxLayout.addWidget(self.fullRunBarText, 2, 0, 1, 1)
+        self.progBoxLayout.addWidget(self.fullRunBar, 3, 0, 1, 1)
+        self.progBox.setLayout(self.progBoxLayout)
+
+        self.simulTabLayout.addWidget(self.meshGroupBox, 0, 0, 1, 1)
+        self.simulTabLayout.addWidget(self.laserPropBox, 0, 1, 1, 1)
+        self.simulTabLayout.addWidget(self.elecPropBox, 0, 2, 1, 1)
+        self.simulTabLayout.addWidget(self.calcPropBox, 1, 0, 1, 3)
+        self.simulTabLayout.addWidget(self.queueBox, 2, 0, 2, 3)
+        self.simulTabLayout.addWidget(self.progBox, 4, 0, 1, 3)
+        self.simulTabLayout.setRowStretch(5,1)
+        self.simulationTab.setLayout(self.simulTabLayout)
+
+        self.analysisTab = QWidget()
+        self.analysisTabLayout = QGridLayout()
+
+        self.analysisTab.setLayout(self.analysisTabLayout)
+
+        self.overallTabWidget.addTab(self.simulationTab, "&Simulation")
+        self.overallTabWidget.addTab(self.analysisTab, "&Analysis")
+
+    def calcLoop(self):
+
+        print("Initializing parallel CPU computation")
+
+        PPPP_calculator(self,0, 0, 0, 10, 10, 100e3, 100, 9,
+                        9, 1, 10, 100e3, 3,
+                        300e-3, 500, 2.33e8)
+
+        print("Completed initialization")
+
+        # ["n_xz", "n_y", "f_xz", "n_int", "r_int", "sig_las (ps)", "w0 (nm)", "lambda (nm)", "E_pulse (nJ)",
+        # "sig_ebeam (ps)", "d_xover", "s_xover", "vel (m/s)", "model", "lasers", "emission"]
+        '''
+        [int(self.voxelTextBox.text()),int(self.sliceTextBox.text()),int(self.focusTextBox.text()),
+                             int(self.intPointTextBox.text()),int(self.intLimitTextBox.text()),
+                             float(self.sigLasTextBox.text()),float(self.waistTextBox.text()),
+                             float(self.waveTextBox.text()),float(self.energyTextBox.text()),
+                             float(self.sigebeamTextBox.text()),float(self.ebeamXOverTextBox.text()),
+                             float(self.ebeamXOverSizeTextBox.text()),float(self.ebeamVelTextBox.text()),
+                             int(self.calcTypeBox.currentIndex()),int(self.lasNumBox.currentIndex())+1,
+                             int(self.ebeamBox.currentIndex())]
+        '''
+        self.fullRunBar.setRange(0,len(self.calculationList)-1)
+
+        for i in np.arange(len(self.calculationList)):
+            data = {}
+            curList = self.calculationList[i]
+            voxel_granularity = int(curList[0])
+            slice_granularity = int(curList[1])
+            focus_granularity = int(curList[2])
+            num_points_to_add = int(curList[3])
+            gauss_limit = curList[4]
+            sig_las = curList[5] # ps
+            w0 = curList[6] # nm
+            las_wav = curList[7]
+            E_pulse = curList[8] # nJ
+            sig_ebeam = curList[9] # time resolution of ebeam, ps
+            ebeam_dxover = curList[10]
+            size_direct_beam = curList[11] # ebeam radius in nm
+            ebeam_vel = curList[12]
+
+            calc_type = int(curList[13]) # 1 for quasiclassical, 0 for feynman
+            laser_num = int(curList[14]) # 1 for single laser, 2 for double laser
+            ebeam_type = int(curList[15]) # 0 for pulsed, 1 for uniform
+
+            results = PPPP_calculator(self,calc_type,laser_num,ebeam_type,sig_ebeam,sig_las,w0,E_pulse,voxel_granularity,slice_granularity,focus_granularity,num_points_to_add,size_direct_beam,gauss_limit,ebeam_dxover,las_wav,ebeam_vel)
+
+            curtime = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())
+            filename = "PPPP_data_" + str(calc_type) + "_" + str(laser_num) + "_" + str(ebeam_type) + "_" + str(voxel_granularity) + "_" + str(slice_granularity) + "_" + str(focus_granularity) + "_" + curtime + ".json"
+            data_dump = []
+            data['run_properties'] = curList.tolist()
+            data['results'] = results.tolist()
+            data_dump.append(data)
+            with open(filename, "w") as outfile:
+                json_data = json.dump(data,outfile)
+            #fig_data = data['results']
+            #plt.figure()
+            #plt.imshow(fig_data)
+            #plt.show()
+            self.fullRunBar.setValue(i)
+
+    def addCalc(self):
+        addArray = np.array([int(self.voxelTextBox.text()),int(self.sliceTextBox.text()),int(self.focusTextBox.text()),
+                             int(self.intPointTextBox.text()),float(self.intLimitTextBox.text()),
+                             float(self.sigLasTextBox.text()),float(self.waistTextBox.text()),
+                             float(self.waveTextBox.text()),float(self.energyTextBox.text()),
+                             float(self.sigebeamTextBox.text()),float(self.ebeamXOverTextBox.text()),
+                             float(self.ebeamXOverSizeTextBox.text()),float(self.ebeamVelTextBox.text()),
+                             int(self.calcTypeBox.currentIndex()),int(self.lasNumBox.currentIndex())+1,
+                             int(self.ebeamBox.currentIndex())])
+
+        self.calculationList.append(addArray)
+
+        curRow = self.tableWidget.rowCount()
+        self.tableWidget.insertRow(curRow)
+
+        for i in np.arange(16):
+            self.tableWidget.setItem(curRow,i,QTableWidgetItem(str(addArray[i])))
+
+    def cellClickedResponse(self, row, column):
+        self.activeRow = row
+
+    def removeCalc(self):
+        self.calculationList.pop(self.activeRow)
+        self.tableWidget.removeRow(self.activeRow)
+
+    def changeStyle(self, styleName):
+        QApplication.setStyle(QStyleFactory.create(styleName))
+        self.changePalette()
+
+    def changePalette(self):
+        if (self.useStylePaletteCheckBox.isChecked()):
+            QApplication.setPalette(QApplication.style().standardPalette())
+        else:
+            QApplication.setPalette(self.originalPalette)
 
 if __name__ == '__main__':
     main(sys.argv)
