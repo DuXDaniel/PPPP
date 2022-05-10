@@ -597,34 +597,11 @@ class WidgetGallery(QDialog):
         self.activeRow = 0
 
         self.setMinimumSize(1000, 750)
-        self.originalPalette = QApplication.palette()
-
-        styleComboBox = QComboBox()
-        styleComboBox.addItems(QStyleFactory.keys())
-
-        styleLabel = QLabel("&Style:")
-        styleLabel.setBuddy(styleComboBox)
-
-        self.useStylePaletteCheckBox = QCheckBox("&Use style's standard palette")
-        self.useStylePaletteCheckBox.setChecked(True)
-
-        disableWidgetsCheckBox = QCheckBox("&Disable widgets")
+        self.setWindowTitle("PPPP Simulation")
 
         self.overallTabWidget()
 
-        styleComboBox.activated[str].connect(self.changeStyle)
-        self.useStylePaletteCheckBox.toggled.connect(self.changePalette)
-        disableWidgetsCheckBox.toggled.connect(self.overallTabWidget.setDisabled)
-
-        topLayout = QHBoxLayout()
-        topLayout.addWidget(styleLabel)
-        topLayout.addWidget(styleComboBox)
-        topLayout.addStretch(1)
-        topLayout.addWidget(self.useStylePaletteCheckBox)
-        topLayout.addWidget(disableWidgetsCheckBox)
-
         mainLayout = QGridLayout()
-        mainLayout.addLayout(topLayout, 0, 0)
         mainLayout.addWidget(self.overallTabWidget, 1, 0, 1, 1)
         #mainLayout.setRowStretch(1, 1)
         #.setRowStretch(2, 1)
@@ -632,8 +609,7 @@ class WidgetGallery(QDialog):
         #mainLayout.setColumnStretch(1, 1)
         self.setLayout(mainLayout)
 
-        self.setWindowTitle("Styles")
-        self.changeStyle('Windows')
+        self.changeStyle('windowsvista')
 
     def overallTabWidget(self):
         self.overallTabWidget = QTabWidget()
@@ -901,46 +877,49 @@ class WidgetGallery(QDialog):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
         filename = QFileDialog.getOpenFileName(self,"Load Data", "","All Files (*);;JSON Files (*.json)", options=options)
-        data = open(filename[0])
-        data_dump = json.load(data)
-        results = data_dump['results']
-        curList = data_dump['run_properties']
+        try:
+            data = open(filename[0])
+            data_dump = json.load(data)
+            results = data_dump['results']
+            curList = data_dump['run_properties']
 
-        voxel_granularity = int(curList[0])
-        slice_granularity = int(curList[1])
-        focus_granularity = int(curList[2])
-        num_points_to_add = int(curList[3])
-        gauss_limit = curList[4]
-        sig_las = curList[5]  # ps
-        w0 = curList[6]  # nm
-        las_wav = curList[7]
-        E_pulse = curList[8]  # nJ
-        sig_ebeam = curList[9]  # time resolution of ebeam, ps
-        ebeam_dxover = curList[10]
-        size_direct_beam = curList[11]  # ebeam radius in nm
-        ebeam_vel = curList[12]
+            voxel_granularity = int(curList[0])
+            slice_granularity = int(curList[1])
+            focus_granularity = int(curList[2])
+            num_points_to_add = int(curList[3])
+            gauss_limit = curList[4]
+            sig_las = curList[5]  # ps
+            w0 = curList[6]  # nm
+            las_wav = curList[7]
+            E_pulse = curList[8]  # nJ
+            sig_ebeam = curList[9]  # time resolution of ebeam, ps
+            ebeam_dxover = curList[10]
+            size_direct_beam = curList[11]  # ebeam radius in nm
+            ebeam_vel = curList[12]
 
-        calc_type = int(curList[13])  # 1 for quasiclassical, 0 for feynman
-        laser_num = int(curList[14])  # 1 for single laser, 2 for double laser
-        ebeam_type = int(curList[15])  # 0 for pulsed, 1 for uniform
+            calc_type = int(curList[13])  # 1 for quasiclassical, 0 for feynman
+            laser_num = int(curList[14])  # 1 for single laser, 2 for double laser
+            ebeam_type = int(curList[15])  # 0 for pulsed, 1 for uniform
 
-        self.update_plot(results)
-        self.voxelLoadedText.setText(str(voxel_granularity))
-        self.sliceLoadedText.setText(str(slice_granularity))
-        self.focusLoadedText.setText(str(focus_granularity))
-        self.intPointLoadedText.setText(str(num_points_to_add))
-        self.intLimLoadedText.setText(str(gauss_limit))
-        self.sigLasLoadedText.setText(str(sig_las))
-        self.w0LoadedText.setText(str(w0))
-        self.lamLoadedText.setText(str(las_wav))
-        self.EPulseLoadedText.setText(str(E_pulse))
-        self.sigEBeamLoadedText.setText(str(sig_ebeam))
-        self.dXOverLoadedText.setText(str(ebeam_dxover))
-        self.sXOverLoadedText.setText(str(size_direct_beam))
-        self.velLoadedText.setText(str(ebeam_vel))
-        self.modelLoadedText.setText(str(calc_type))
-        self.numLasLoadedText.setText(str(laser_num))
-        self.emissionLoadedText.setText(str(ebeam_type))
+            self.update_plot(results)
+            self.voxelLoadedText.setText(str(voxel_granularity))
+            self.sliceLoadedText.setText(str(slice_granularity))
+            self.focusLoadedText.setText(str(focus_granularity))
+            self.intPointLoadedText.setText(str(num_points_to_add))
+            self.intLimLoadedText.setText(str(gauss_limit))
+            self.sigLasLoadedText.setText(str(sig_las))
+            self.w0LoadedText.setText(str(w0))
+            self.lamLoadedText.setText(str(las_wav))
+            self.EPulseLoadedText.setText(str(E_pulse))
+            self.sigEBeamLoadedText.setText(str(sig_ebeam))
+            self.dXOverLoadedText.setText(str(ebeam_dxover))
+            self.sXOverLoadedText.setText(str(size_direct_beam))
+            self.velLoadedText.setText(str(ebeam_vel))
+            self.modelLoadedText.setText(str(calc_type))
+            self.numLasLoadedText.setText(str(laser_num))
+            self.emissionLoadedText.setText(str(ebeam_type))
+        except:
+            print("Failed to load data")
 
     def calcLoop(self):
         print("Initializing parallel CPU computation")
@@ -1059,13 +1038,6 @@ class WidgetGallery(QDialog):
 
     def changeStyle(self, styleName):
         QApplication.setStyle(QStyleFactory.create(styleName))
-        self.changePalette()
-
-    def changePalette(self):
-        if (self.useStylePaletteCheckBox.isChecked()):
-            QApplication.setPalette(QApplication.style().standardPalette())
-        else:
-            QApplication.setPalette(self.originalPalette)
 
     def update_plot(self,data):
         # Drop off the first y element, append a new one.
