@@ -3,6 +3,7 @@ from numba import jit, prange
 import scipy.integrate as spi
 import scipy.interpolate as spip
 import math as math
+import matplotlib
 import matplotlib.pyplot as plt
 import time
 import tqdm
@@ -15,6 +16,9 @@ from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDateTimeEdit,
         QProgressBar, QPushButton, QRadioButton, QScrollBar, QSizePolicy,
         QSlider, QSpinBox, QStyleFactory, QTableWidget, QTabWidget, QTextEdit,
         QVBoxLayout, QWidget, QHeaderView, QSpacerItem, QTableWidgetItem,QTableWidgetSelectionRange,QAbstractItemView)
+matplotlib.use('Qt5Agg')
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
 
 @jit(nopython = True)
 def temporal_gauss(z,t,sig_las):
@@ -492,7 +496,7 @@ def PPPP_calculator(GUIObj,calc_type=0,laser_num=1,ebeam_type=0,sig_ebeam=1,sig_
 
     #time_init = time.time()
     #GUIObj.curRunBar.setRange(0,z_drift.size-1)
-    pbar = tqdm.tqdm(total=z_drift.size,desc='Current Calculation Progress',position=1,leave=False)
+    pbar = tqdm.tqdm(total=z_drift.size,desc='Current Calculation Progress',position=1,leave=True)
     for zin in np.arange(z_drift.size):
 
         for xin in np.arange(x_drift.size):
@@ -592,7 +596,7 @@ class WidgetGallery(QDialog):
         self.calculationList = []
         self.activeRow = 0
 
-        self.setMinimumSize(750, 750)
+        self.setMinimumSize(1000, 750)
         self.originalPalette = QApplication.palette()
 
         styleComboBox = QComboBox()
@@ -793,11 +797,166 @@ class WidgetGallery(QDialog):
 
         self.analysisTab = QWidget()
         self.analysisTabLayout = QGridLayout()
+        self.canvas = MplCanvas(self.analysisTab, width=5, height=4, dpi=100)
+        # sc.axes.plot([0, 1, 2, 3, 4], [10, 1, 20, 3, 40])
 
-        self.analysisTab.setLayout(self.analysisTabLayout)
+        # Create toolbar, passing canvas as first parament, parent (self, the MainWindow) as second.
+        self.toolbar = NavigationToolbar(self.canvas, self)
+
+        self.loadDataBar = QGroupBox("Data Loading")
+        self.loadDataBarLayout = QGridLayout()
+        self.loadButton = QPushButton("Load Data")
+        self.loadButton.setDefault(True)
+        self.loadButton.clicked.connect(self.loadData)
+        # ["n_xz", "n_y", "f_xz", "n_int", "r_int", "sig_las (ps)", "w0 (nm)", "lambda (nm)", "E_pulse (nJ)",
+        # "sig_ebeam (ps)", "d_xover", "s_xover", "vel (m/s)", "model", "lasers", "emission"]
+        self.voxelLoadText = QLabel("Voxels:")
+        self.voxelLoadedText = QLabel("")
+        self.sliceLoadText = QLabel("Slices:")
+        self.sliceLoadedText = QLabel("")
+        self.focusLoadText = QLabel("Points:")
+        self.focusLoadedText = QLabel("")
+        self.intPointLoadText = QLabel("Integration Points")
+        self.intPointLoadedText = QLabel("")
+        self.intLimLoadText = QLabel("Integration Limit:")
+        self.intLimLoadedText = QLabel("")
+        self.sigLasLoadText = QLabel("Laser Duration (ps):")
+        self.sigLasLoadedText = QLabel("")
+        self.w0LoadText = QLabel("Beam Waist (nm):")
+        self.w0LoadedText = QLabel("")
+        self.lamLoadText = QLabel("Wavelength (nm):")
+        self.lamLoadedText = QLabel("")
+        self.EPulseLoadText = QLabel("Pulse Energy (nJ):")
+        self.EPulseLoadedText = QLabel("")
+        self.sigEBeamLoadText = QLabel("Electron Duration (ps):")
+        self.sigEBeamLoadedText = QLabel("")
+        self.dXOverLoadText = QLabel("XOver Distance (mm):")
+        self.dXOverLoadedText = QLabel("")
+        self.sXOverLoadText = QLabel("XOver Size (nm):")
+        self.sXOverLoadedText = QLabel("")
+        self.velLoadText = QLabel("Velocity (m/s):")
+        self.velLoadedText = QLabel("")
+        self.modelLoadText = QLabel("Model:")
+        self.modelLoadedText = QLabel("")
+        self.numLasLoadText = QLabel("Laser Count:")
+        self.numLasLoadedText = QLabel("")
+        self.emissionLoadText = QLabel("Emission:")
+        self.emissionLoadedText = QLabel("")
+
+        self.loadDataBarLayout.addWidget(self.loadButton,0,0,5,1)
+
+        self.loadDataBarLayout.addWidget(self.voxelLoadText, 0, 1, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.voxelLoadedText, 0, 2, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.sliceLoadText, 1, 1, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.sliceLoadedText, 1, 2, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.focusLoadText, 2, 1, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.focusLoadedText, 2, 2, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.intPointLoadText, 3, 1, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.intPointLoadedText, 3, 2, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.intLimLoadText, 4, 1, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.intLimLoadedText, 4, 2, 1, 1, alignment=Qt.AlignLeft)
+
+        self.loadDataBarLayout.addWidget(self.sigLasLoadText, 0, 3, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.sigLasLoadedText, 0, 4, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.w0LoadText, 1, 3, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.w0LoadedText, 1, 4, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.lamLoadText, 2, 3, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.lamLoadedText, 2, 4, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.EPulseLoadText, 3, 3, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.EPulseLoadedText, 3, 4, 1, 1, alignment=Qt.AlignLeft)
+
+        self.loadDataBarLayout.addWidget(self.sigEBeamLoadText, 0, 5, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.sigEBeamLoadedText, 0, 6, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.dXOverLoadText, 1, 5, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.dXOverLoadedText, 1, 6, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.sXOverLoadText, 2, 5, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.sXOverLoadedText, 2, 6, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.velLoadText, 3, 5, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.velLoadedText, 3, 6, 1, 1, alignment=Qt.AlignLeft)
+
+        self.loadDataBarLayout.addWidget(self.modelLoadText, 0, 7, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.modelLoadedText, 0, 8, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.numLasLoadText, 1, 7, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.numLasLoadedText, 1, 8, 1, 1, alignment=Qt.AlignLeft)
+        self.loadDataBarLayout.addWidget(self.emissionLoadText, 2, 7, 1, 1, alignment=Qt.AlignRight)
+        self.loadDataBarLayout.addWidget(self.emissionLoadedText, 2, 8, 1, 1, alignment=Qt.AlignLeft)
+
+        self.loadDataBar.setLayout(self.loadDataBarLayout)
+
+        self.figLayout = QVBoxLayout()
+        self.figLayout.addWidget(self.loadDataBar)
+        self.figLayout.addWidget(self.toolbar)
+        self.figLayout.addWidget(self.canvas)
+
+        # Create a placeholder widget to hold our toolbar and canvas.
+        self.figBarWidget = QWidget()
+        self.figBarWidget.setLayout(self.figLayout)
+        self.analysisTabLayout.addWidget(self.figBarWidget)
+        self.analysisTab.setLayout(self.figLayout)
 
         self.overallTabWidget.addTab(self.simulationTab, "&Simulation")
         self.overallTabWidget.addTab(self.analysisTab, "&Analysis")
+
+    def loadData(self):
+        data = {}
+        curList = self.calculationList[full_calc_point]
+        voxel_granularity = int(curList[0])
+        slice_granularity = int(curList[1])
+        focus_granularity = int(curList[2])
+        num_points_to_add = int(curList[3])
+        gauss_limit = curList[4]
+        sig_las = curList[5]  # ps
+        w0 = curList[6]  # nm
+        las_wav = curList[7]
+        E_pulse = curList[8]  # nJ
+        sig_ebeam = curList[9]  # time resolution of ebeam, ps
+        ebeam_dxover = curList[10]
+        size_direct_beam = curList[11]  # ebeam radius in nm
+        ebeam_vel = curList[12]
+
+        calc_type = int(curList[13])  # 1 for quasiclassical, 0 for feynman
+        laser_num = int(curList[14])  # 1 for single laser, 2 for double laser
+        ebeam_type = int(curList[15])  # 0 for pulsed, 1 for uniform
+
+        results =
+
+        curtime = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())
+        filename = "PPPP_data_" + str(calc_type) + "_" + str(laser_num) + "_" + str(ebeam_type) + "_" + str(
+            voxel_granularity) + "_" + str(slice_granularity) + "_" + str(focus_granularity) + "_" + curtime + ".json"
+        data_dump = []
+        data['run_properties'] = curList.tolist()
+        data['results'] = results.tolist()
+        data_dump.append(data)
+        with open(filename, "w") as outfile:
+            json_data = json.dump(data, outfile)
+        # fig_data = data['results']
+        # plt.figure()
+        # plt.imshow(fig_data)
+        # plt.show()
+        '''
+        self.fullRunBar.setValue(full_calc_point)
+        full_elapsed = time.time() - full_init
+        full_remain = (len(self.calculationList) - 1 - full_calc_point) * full_elapsed / (full_calc_point + 1)
+        time.sleep(0.5)
+        self.fullRunBarText.setText("Full Run Progress - Time Remaining: " + str(int(full_remain)) + "s")
+        '''
+        self.update_plot(results)
+        self.voxelLoadedText.setText(str(voxel_granularity))
+        self.sliceLoadedText.setText(str(slice_granularity))
+        self.focusLoadedText.setText(str(focus_granularity))
+        self.intPointLoadedText.setText(str(num_points_to_add))
+        self.intLimLoadedText.setText(str(gauss_limit))
+        self.sigLasLoadedText.setText(str(sig_las))
+        self.w0LoadedText.setText(str(w0))
+        self.lamLoadedText.setText(str(las_wav))
+        self.EPulseLoadedText.setText(str(E_pulse))
+        self.sigEBeamLoadedText.setText(str(sig_ebeam))
+        self.dXOverLoadedText.setText(str(ebeam_dxover))
+        self.sXOverLoadedText.setText(str(size_direct_beam))
+        self.velLoadedText.setText(str(ebeam_vel))
+        self.modelLoadedText.setText(str(calc_type))
+        self.numLasLoadedText.setText(str(laser_num))
+        self.emissionLoadedText.setText(str(ebeam_type))
 
     def calcLoop(self):
         print("Initializing parallel CPU computation")
@@ -806,6 +965,7 @@ class WidgetGallery(QDialog):
                         9, 1, 10, 100e3, 3,
                         300e-3, 500, 2.33e8)
 
+        time.sleep(0.1)
         print("Completed initialization")
 
         # ["n_xz", "n_y", "f_xz", "n_int", "r_int", "sig_las (ps)", "w0 (nm)", "lambda (nm)", "E_pulse (nJ)",
@@ -865,6 +1025,23 @@ class WidgetGallery(QDialog):
             time.sleep(0.5)
             self.fullRunBarText.setText("Full Run Progress - Time Remaining: " + str(int(full_remain)) + "s")
             '''
+            self.update_plot(results)
+            self.voxelLoadedText.setText(str(voxel_granularity))
+            self.sliceLoadedText.setText(str(slice_granularity))
+            self.focusLoadedText.setText(str(focus_granularity))
+            self.intPointLoadedText.setText(str(num_points_to_add))
+            self.intLimLoadedText.setText(str(gauss_limit))
+            self.sigLasLoadedText.setText(str(sig_las))
+            self.w0LoadedText.setText(str(w0))
+            self.lamLoadedText.setText(str(las_wav))
+            self.EPulseLoadedText.setText(str(E_pulse))
+            self.sigEBeamLoadedText.setText(str(sig_ebeam))
+            self.dXOverLoadedText.setText(str(ebeam_dxover))
+            self.sXOverLoadedText.setText(str(size_direct_beam))
+            self.velLoadedText.setText(str(ebeam_vel))
+            self.modelLoadedText.setText(str(calc_type))
+            self.numLasLoadedText.setText(str(laser_num))
+            self.emissionLoadedText.setText(str(ebeam_type))
             fullbar.update(1)
         fullbar.close()
 
@@ -905,6 +1082,31 @@ class WidgetGallery(QDialog):
             QApplication.setPalette(QApplication.style().standardPalette())
         else:
             QApplication.setPalette(self.originalPalette)
+
+    def update_plot(self,data):
+        # Drop off the first y element, append a new one.
+        self.canvas.axes.cla()  # Clear the canvas.
+        data_dif = data - np.amin(data)
+
+        maximum = np.amax(data_dif)
+        minimum = np.amin(data_dif)
+        self.img = self.canvas.axes.imshow(np.flipud(np.rot90(data_dif,1)))
+        self.canvas.axes.get_xaxis().set_ticks([])
+        self.canvas.axes.get_yaxis().set_ticks([])
+        self.canvas.axes.invert_yaxis()
+
+        self.cbar = self.canvas.fig.colorbar(self.img,self.canvas.caxes,ticks=[minimum, maximum],pad=0.01)
+        self.canvas.fig.tight_layout()
+        # Trigger the canvas to update and redraw.
+        self.canvas.draw()
+
+class MplCanvas(FigureCanvasQTAgg):
+
+    def __init__(self, parent=None, width=5, height=4, dpi=600):
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.axes = self.fig.add_subplot(1,15,(1,14))
+        self.caxes = self.fig.add_subplot(1,15,15)
+        super(MplCanvas, self).__init__(self.fig)
 
 if __name__ == '__main__':
     main(sys.argv)
