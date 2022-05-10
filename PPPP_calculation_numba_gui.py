@@ -11,11 +11,11 @@ import sys
 import json
 from fbs_runtime.application_context.PyQt5 import ApplicationContext
 from PyQt5.QtCore import QDateTime, Qt, QTimer
-from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDateTimeEdit,
-        QDial, QDialog, QGridLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-        QProgressBar, QPushButton, QRadioButton, QScrollBar, QSizePolicy,
-        QSlider, QSpinBox, QStyleFactory, QTableWidget, QTabWidget, QTextEdit,
-        QVBoxLayout, QWidget, QHeaderView, QSpacerItem, QTableWidgetItem,QTableWidgetSelectionRange,QAbstractItemView)
+from PyQt5.QtWidgets import (QApplication, QCheckBox, QComboBox, QDateTimeEdit, QDial, QDialog, QGridLayout, QGroupBox,
+                             QHBoxLayout, QLabel, QLineEdit, QProgressBar, QPushButton, QRadioButton, QScrollBar,
+                             QSizePolicy, QSlider, QSpinBox, QStyleFactory, QTableWidget, QTabWidget, QTextEdit,
+                             QVBoxLayout, QWidget, QHeaderView, QSpacerItem, QTableWidgetItem,
+                             QTableWidgetSelectionRange, QAbstractItemView, QFileDialog)
 matplotlib.use('Qt5Agg')
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg, NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
@@ -898,8 +898,14 @@ class WidgetGallery(QDialog):
         self.overallTabWidget.addTab(self.analysisTab, "&Analysis")
 
     def loadData(self):
-        data = {}
-        curList = self.calculationList[full_calc_point]
+        options = QFileDialog.Options()
+        options |= QFileDialog.DontUseNativeDialog
+        filename = QFileDialog.getOpenFileName(self,"Load Data", "","All Files (*);;JSON Files (*.json)", options=options)
+        data = open(filename[0])
+        data_dump = json.load(data)
+        results = data_dump['results']
+        curList = data_dump['run_properties']
+
         voxel_granularity = int(curList[0])
         slice_granularity = int(curList[1])
         focus_granularity = int(curList[2])
@@ -918,28 +924,6 @@ class WidgetGallery(QDialog):
         laser_num = int(curList[14])  # 1 for single laser, 2 for double laser
         ebeam_type = int(curList[15])  # 0 for pulsed, 1 for uniform
 
-        results =
-
-        curtime = time.strftime("%Y_%m_%d_%H_%M_%S", time.localtime())
-        filename = "PPPP_data_" + str(calc_type) + "_" + str(laser_num) + "_" + str(ebeam_type) + "_" + str(
-            voxel_granularity) + "_" + str(slice_granularity) + "_" + str(focus_granularity) + "_" + curtime + ".json"
-        data_dump = []
-        data['run_properties'] = curList.tolist()
-        data['results'] = results.tolist()
-        data_dump.append(data)
-        with open(filename, "w") as outfile:
-            json_data = json.dump(data, outfile)
-        # fig_data = data['results']
-        # plt.figure()
-        # plt.imshow(fig_data)
-        # plt.show()
-        '''
-        self.fullRunBar.setValue(full_calc_point)
-        full_elapsed = time.time() - full_init
-        full_remain = (len(self.calculationList) - 1 - full_calc_point) * full_elapsed / (full_calc_point + 1)
-        time.sleep(0.5)
-        self.fullRunBarText.setText("Full Run Progress - Time Remaining: " + str(int(full_remain)) + "s")
-        '''
         self.update_plot(results)
         self.voxelLoadedText.setText(str(voxel_granularity))
         self.sliceLoadedText.setText(str(slice_granularity))
