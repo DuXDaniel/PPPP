@@ -6,8 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="bafacdca-fc33-4f17-8d0b-d2907ea4f158" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/PPPP_calculation_numba_gui.py" beforeDir="false" afterPath="$PROJECT_DIR$/PPPP_calculation_numba_gui.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/PPPP_data_0_1_0_9_9_1_2022_05_10_00_10_01.json" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
