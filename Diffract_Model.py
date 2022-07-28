@@ -248,7 +248,6 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=2.5e-6,bea
     energ_arr = np.sqrt(moment_mag_arr**2*c**2 + mass_e**2*c**2)
 
     [spots,paths] = spot_path_generator(10) # distance of 100 momenta units away from direct beam
-    print(paths)
 
     print('Starting calculation')
 
