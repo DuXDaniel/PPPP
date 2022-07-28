@@ -75,7 +75,7 @@ def laser_sum(t, gauss_limit, sig_las, beam_waist):
 def trapz_self(x,y):
     x_diff = x[1:-1] - x[0:-2]
     y_trap = (y[1:-1] + y[0:-2])/2
-    return sum(x_diff*y_trap)
+    return np.sum(x_diff*y_trap)
 
 @jit(nopython = True)
 def feynman_single_calc_func(cur_voxel,init_y_vals,x_slopes,z_slopes,norm_factor_array,vel,beam_waist,sig_las,theta,beta,c,lam,t_range,hbar,alpha,mass_e,zshift,xshift):
