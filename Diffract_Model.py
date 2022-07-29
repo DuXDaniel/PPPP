@@ -190,11 +190,11 @@ def dist_calc(vec):
 def besselfun(n,W):
     return (besselj(n,W))**2
 
-@jit(nopython = True,parallel = True)
+@jit(parallel = True)
 def model_caller(prob_vals, spots, paths, W_x, W_z, C0, Tzx, Tznx, Tnzx, Tnznx):
     for j in prange(spots.shape[0]):
         path = paths[j,:,:]
-        totbess_matr = sps.jv(path[j,:,1],W_x)*sps.jv(path[j,:,2],W_z)*sps.jv(path[j,:,3],C0*(Tzx+Tnznx))*sps.jv(path[j,:,4],C0*(Tznx+Tnzx))
+        totbess_matr = sps.jv(path[:,1],W_x)*sps.jv(path[:,2],W_z)*sps.jv(path[:,3],C0*(Tzx+Tnznx))*sps.jv(path[:,4],C0*(Tznx+Tnzx))
         prob_vals[j,:] = sum(totbess_matr,1)
     
     return prob_vals
