@@ -190,14 +190,16 @@ def dist_calc(vec):
 def besselfun(n,W):
     return (besselj(n,W))**2
 
-@jit(parallel = True)
 def model_caller(prob_vals, spots, paths, W_x, W_z, C0, Tzx, Tznx, Tnzx, Tnznx):
-    for j in prange(spots.shape[0]):
+    for j in np.arange(spots.shape[0]):
         path = paths[j,:,:]
+        print(path[:,1].shape)
+        print(W_x.shape)
         totbess_matr = sps.jv(path[:,1],W_x)*sps.jv(path[:,2],W_z)*sps.jv(path[:,3],C0*(Tzx+Tnznx))*sps.jv(path[:,4],C0*(Tznx+Tnzx))
         prob_vals[j,:] = sum(totbess_matr,1)
     
     return prob_vals
+    # do flatten array with meshgrid to avoid broadcasting issues
 
 def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=2.5e-6,beam_waist=100e-6,gauss_limit=4,ebeam_dxover=0,las_wav=517e-9,ebeam_vel=8.15e7):
     print('Seeding workspace with relevant information.')
@@ -256,21 +258,24 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=2.5e-6,bea
     for i in np.arange(t_range.size):
         random_sel = np.random.rand(1,num_electron_MC_trial)
     
-        G_x = sig_las*np.sqrt(np.pi/2)*np.exp(-(pos[1,:])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
-        omeg_las_sq_x = w0**2*(1+pos[1,:]**2/z0**2)
-        rho_zy_sq = pos[2,:]**2 + pos[3,:]**2
+        print(pos.shape)
+        G_x = sig_las*np.sqrt(np.pi/2)*np.exp(-(pos[:,0])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
+        print(G_x.shape)
+        omeg_las_sq_x = w0**2*(1+pos[:,0]**2/z0**2)
+        rho_zy_sq = pos[:,1]**2 + pos[:,2]**2
         W_x = np.e**2/2/hbar/mass_e*norm_factor_array[i]**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*G_x
+        print(W_x.shape)
         
-        G_z = sig_las*np.sqrt(np.pi/2)*np.exp(-(pos[2,:])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
-        omeg_las_sq_z = w0**2*(1+pos[2,:]**2/z0**2)
-        rho_xy_sq = pos[1,:]**2 + pos[3,:]**2
+        G_z = sig_las*np.sqrt(np.pi/2)*np.exp(-(pos[:,1])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
+        omeg_las_sq_z = w0**2*(1+pos[:,1]**2/z0**2)
+        rho_xy_sq = pos[:,0]**2 + pos[:,2]**2
         W_z = np.e**2/2/hbar/mass_e*norm_factor_array[i]**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*G_z
         
         C0 = -np.e**2/2/hbar/mass_e*2*norm_factor_array[i]**2*w0**2/np.sqrt(omeg_las_sq_x)/np.sqrt(omeg_las_sq_z)*np.exp(-rho_xy_sq/omeg_las_sq_z - rho_zy_sq/omeg_las_sq_x)
-        Tzx = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[1,:]-pos[2,:])**2/(2*sig_las**2*c**2))*(sps.erf((pos[1,:]+pos[2,:]-2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[1,:]+pos[2,:]-2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
-        Tznx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[1,:]+pos[2,:])**2/(2*sig_las**2*c**2))*(sps.erf((pos[1,:]-pos[2,:]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[1,:]-pos[2,:]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
-        Tnzx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[1,:]+pos[2,:])**2/(2*sig_las**2*c**2))*(sps.erf((-pos[1,:]+pos[2,:]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((-pos[1,:]+pos[2,:]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
-        Tnznx = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[1,:]-pos[2,:])**2/(2*sig_las**2*c**2))*(sps.erf((pos[1,:]+pos[2,:]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[1,:]+pos[2,:]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
+        Tzx = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]-pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]+pos[:,1]-2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]+pos[:,1]-2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
+        Tznx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]+pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]-pos[:,1]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]-pos[:,1]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
+        Tnzx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]+pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((-pos[:,0]+pos[:,1]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((-pos[:,0]+pos[:,1]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
+        Tnznx = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]-pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]+pos[:,1]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]+pos[:,1]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
 
         prob_vals = np.zeros((spots.shape[0],num_electron_MC_trial))
 
