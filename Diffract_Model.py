@@ -110,9 +110,31 @@ def meshgrid_custom(x,y):
     yy = np.empty(shape=(x.size, y.size), dtype=y.dtype)
     for j in range(x.size):
         for k in range(y.size):
-            xx[j,k] = x[k]  # change to x[k] if indexing xy
-            yy[j,k] = y[j]  # change to y[j] if indexing xy
+            xx[j,k] = x[j]  # change to x[k] if indexing xy
+            yy[j,k] = y[k]  # change to y[j] if indexing xy
     return xx, yy
+
+@jit(nopython = True)
+def meshgrid_multiple(x,y1,y2,y3,y4,y5,y6,y7):
+    xx = np.empty(shape=(x.size, y1.size), dtype=x.dtype)
+    yy1 = np.empty(shape=(x.size, y1.size), dtype=y1.dtype)
+    yy2 = np.empty(shape=(x.size, y2.size), dtype=y2.dtype)
+    yy3 = np.empty(shape=(x.size, y3.size), dtype=y3.dtype)
+    yy4 = np.empty(shape=(x.size, y4.size), dtype=y4.dtype)
+    yy5 = np.empty(shape=(x.size, y5.size), dtype=y5.dtype)
+    yy6 = np.empty(shape=(x.size, y6.size), dtype=y6.dtype)
+    yy7 = np.empty(shape=(x.size, y7.size), dtype=y7.dtype)
+    for j in range(x.size):
+        for k in range(y.size):
+            xx[j,k] = x[j]  # change to x[k] if indexing xy
+            yy1[j,k] = yy1[k]  # change to y[j] if indexing xy
+            yy2[j,k] = yy2[k]  # change to y[j] if indexing xy
+            yy3[j,k] = yy3[k]  # change to y[j] if indexing xy
+            yy4[j,k] = yy4[k]  # change to y[j] if indexing xy
+            yy5[j,k] = yy5[k]  # change to y[j] if indexing xy
+            yy6[j,k] = yy6[k]  # change to y[j] if indexing xy
+            yy7[j,k] = yy7[k]  # change to y[j] if indexing xy
+    return xx, yy1, yy2, yy3, yy4, yy5, yy6, yy7
 
 def spot_path_generator(distance): # [spots, paths]
     print('Generating initial spot list')
@@ -193,9 +215,10 @@ def besselfun(n,W):
 def model_caller(prob_vals, spots, paths, W_x, W_z, C0, Tzx, Tznx, Tnzx, Tnznx):
     for j in np.arange(spots.shape[0]):
         path = paths[j,:,:]
-        print(path[:,1].shape)
-        print(W_x.shape)
-        totbess_matr = sps.jv(path[:,1],W_x)*sps.jv(path[:,2],W_z)*sps.jv(path[:,3],C0*(Tzx+Tnznx))*sps.jv(path[:,4],C0*(Tznx+Tnzx))
+        [orderMesh, valMesh] = meshgrid_custom(prob_vals,path)
+        print(orderMesh.shape)
+        print(path.shape)
+        totbess_matr = sps.jv(orderMesh.flatten(),W_x)*sps.jv(path[:,2],W_z)*sps.jv(path[:,3],C0*(Tzx+Tnznx))*sps.jv(path[:,4],C0*(Tznx+Tnzx))
         prob_vals[j,:] = sum(totbess_matr,1)
     
     return prob_vals
