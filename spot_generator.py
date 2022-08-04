@@ -98,9 +98,10 @@ def spot_path_generator(distance): # [spots, paths]
     return spots, paths_arr
 
 def main(argv):
-    for i in np.arange(25):
+    for i in np.arange(14,25):
+        full_init = time.time()
         data = {}
-        [spots,paths] = spot_path_generator(i) # distance of 100 momenta units away from direct beam_waist
+        [spots,paths] = spot_path_generator(i)
         data_dump = []
         data['spots'] = spots.tolist()
         data['paths'] = paths.tolist()
@@ -108,8 +109,8 @@ def main(argv):
         filename = "spot_" + str(i) + ".json"
         with open(filename, "w") as outfile:
             json_data = json.dump(data,outfile)
-
-    #sys.exit(appctxt.app.exec())
+        full_elapsed = time.time() - full_init
+        print(full_elapsed)
 
 if __name__ == '__main__':
     main(sys.argv)

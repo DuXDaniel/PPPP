@@ -54,7 +54,7 @@ def Norm_Laser_Calculator(t_range,gauss_limit,sig_las,lam,w0,E_pulse): # [norm_f
     freq = c/lam # Hz
 
     laser_sum_array = np.zeros(len(t_range))
-    for i in np.arange(len(t_range)-1):
+    for i in np.arange(len(t_range)):
         val = laser_sum(t_range[i], gauss_limit, sig_las, w0, lam)
         laser_sum_array[i] = val[0]
 
@@ -193,7 +193,7 @@ def model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag):
 def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_waist=100e-6,gauss_limit=4,ebeam_dxover=0,las_wav=517e-9,ebeam_vel=8.15e7):
     print('Seeding workspace with relevant information.')
 
-    num_electron_MC_trial = int(16) # number of electrons to test per trial, must be square rootable
+    num_electron_MC_trial = int(4) # number of electrons to test per trial, must be square rootable
     num_electrons_per_stage = 100 # 1e6; must be square rootable
 
     theta =  0
@@ -217,9 +217,15 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
     x_range = np.linspace(-ebeam_xover_size,ebeam_xover_size,2*segments)
     z_range = np.linspace(-ebeam_xover_size,ebeam_xover_size,2*segments)
 
-    t_step = 1e-15#1e-15 # fs steps
+    t_mag = 17
+    t_step = 10.**(-1*t_mag)#1e-15 # fs steps
     t_range = np.arange(-gauss_limit*sig_las,gauss_limit*sig_las,t_step)
-    norm_factor_array = Norm_Laser_Calculator(t_range,gauss_limit,sig_las,lam,w0,E_pulse)
+    #norm_factor_array = Norm_Laser_Calculator(t_range,gauss_limit,sig_las,lam,w0,E_pulse)
+    
+    filename = "norm_factor_" + str(t_mag) + ".json"
+    data = open(filename)
+    data_dump = json.load(data)
+    norm_factor_array = 1j*np.array(data_dump['norm_factor'],dtype=complex)
 
     [vels, elecTime] = Electron_Generator(num_electron_MC_trial,xover_angle,0,vel,t_step)
     dist_traveled = np.zeros((num_electron_MC_trial,3))
@@ -237,7 +243,13 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
     init_vel_mag_arr = np.sqrt(np.sum(init_vel_arr*init_vel_arr,1))
     phase_exp = t_step*init_vel_mag_arr/init_wav*2*math.pi
 
-    [spots,paths] = spot_path_generator(10) # distance of 100 momenta units away from direct beam
+    #[spots,paths] = spot_path_generator(10) # distance of 100 momenta units away from direct beam
+    
+    filename = "spot_" + str(10) + ".json"
+    data = open(filename)
+    data_dump = json.load(data)
+    spots = np.array(data_dump['spots'])
+    paths = np.array(data_dump['paths'])
 
     print('Starting calculation')
 
@@ -246,17 +258,17 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
     for i in np.arange(t_range.size):
         random_sel = np.random.rand(num_electron_MC_trial)
     
-        G_x = sig_las*np.sqrt(np.pi/2)*np.exp(-(pos[:,0])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
+        G_x = sig_las*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,0])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
         omeg_las_sq_x = w0**2*(1+pos[:,0]**2/z0**2)
         rho_zy_sq = pos[:,1]**2 + pos[:,2]**2
-        W_x = np.e**2/2/hbar/mass_e*norm_factor_array[i]**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*G_x
+        W_x = e**2/2/hbar/mass_e*norm_factor_array[i]**2*w0**2/omeg_las_sq_x*np.exp(-rho_zy_sq/omeg_las_sq_x)*G_x
         
-        G_z = sig_las*np.sqrt(np.pi/2)*np.exp(-(pos[:,1])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
+        G_z = sig_las*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,1])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
         omeg_las_sq_z = w0**2*(1+pos[:,1]**2/z0**2)
         rho_xy_sq = pos[:,0]**2 + pos[:,2]**2
-        W_z = np.e**2/2/hbar/mass_e*norm_factor_array[i]**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*G_z
+        W_z = e**2/2/hbar/mass_e*norm_factor_array[i]**2*w0**2/omeg_las_sq_z*np.exp(-rho_xy_sq/omeg_las_sq_z)*G_z
         
-        C0 = -np.e**2/2/hbar/mass_e*2*norm_factor_array[i]**2*w0**2/np.sqrt(omeg_las_sq_x)/np.sqrt(omeg_las_sq_z)*np.exp(-rho_xy_sq/omeg_las_sq_z - rho_zy_sq/omeg_las_sq_x)
+        C0 = -e**2/2/hbar/mass_e*2*norm_factor_array[i]**2*w0**2/np.sqrt(omeg_las_sq_x)/np.sqrt(omeg_las_sq_z)*np.exp(-rho_xy_sq/omeg_las_sq_z - rho_zy_sq/omeg_las_sq_x)
         Tzx = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]-pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]+pos[:,1]-2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]+pos[:,1]-2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
         Tznx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]+pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]-pos[:,1]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]-pos[:,1]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
         Tnzx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]+pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((-pos[:,0]+pos[:,1]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((-pos[:,0]+pos[:,1]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
@@ -264,10 +276,10 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
 
         prob_vals = np.zeros((spots.shape[0],num_electron_MC_trial))
 
-        W_x = W_x.real
-        W_z = W_z.real
-        firstDiag = (C0*(Tzx+Tnznx)).real
-        secondDiag = (C0*(Tznx+Tnzx)).real
+        W_x = abs(W_x).real
+        W_z = abs(W_z).real
+        firstDiag = abs(C0*(Tzx+Tnznx)).real
+        secondDiag = abs(C0*(Tznx+Tnzx)).real
 
         prob_vals = model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag)
     
