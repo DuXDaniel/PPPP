@@ -187,17 +187,14 @@ def model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag):
     totbess_matr = np.array(totbess_matr).reshape((paths.shape[0],paths.shape[1],W_x.size))
 
     for j in np.arange(paths.shape[0]):
-        #path = paths[j,:,:]
-        #totbess_matr = np.zeros((path.shape[0],W_x.size))
-        #k_arr = np.arange(path.shape[0])
-        #with mp.Pool(processes = max(mp.cpu_count()-1)) as pool:
-        #    totbess_matr = pool.map(partial(besselmap, path,W_x,W_z,firstDiag,secondDiag),k_arr)
-
-        # for k in np.arange(path.shape[0]):
-        #    if sum(path[k,:])<=1e98:
-        #        totbess_matr[k,:] = (sps.jv(path[k,0],W_x)*sps.jv(path[k,1],W_z)*sps.jv(path[k,2], firstDiag)*sps.jv(path[k,3], secondDiag))**2
-                
-        prob_vals[j,:] = sum(totbess_matr[j,:,:],1)
+        '''
+        path = paths[j,:,:]
+        totbess_matr = np.zeros((path.shape[0],W_x.size))
+        for k in np.arange(path.shape[0]):
+            if sum(path[k,:])<=1e98:
+                totbess_matr[k,:] = (sps.jv(path[k,0],W_x)*sps.jv(path[k,1],W_z)*sps.jv(path[k,2], firstDiag)*sps.jv(path[k,3], secondDiag))**2
+        '''
+        prob_vals[j,:] = sum(totbess_matr[j,:,:],0)
 
     return prob_vals
 
@@ -296,11 +293,14 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
 
         prob_vals = model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag)
     
+        prob_val_cumul = np.zeros(prob_vals.shape)
         indices = np.zeros(num_electron_MC_trial, dtype=int)
         
         for j in np.arange(num_electron_MC_trial):
-            prob_val_cumul = np.cumsum(prob_vals[:,j]/sum(prob_vals[:,j]))
+            prob_val_cumul[:,j] = np.cumsum(prob_vals[:,j]/sum(prob_vals[:,j]))
             indices[j] = np.nonzero(prob_val_cumul > np.full(prob_val_cumul.shape,random_sel[j]))[0][0]
+        
+        print(prob_val_cumul)
         
         momenta_shift = spots[indices,:]*hbar/lam
 
