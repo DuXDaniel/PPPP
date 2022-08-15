@@ -4,14 +4,12 @@ import scipy.integrate as spi
 import scipy.interpolate as spip
 import scipy.special as sps
 import math as math
-import matplotlib
-import matplotlib.pyplot as plt
 import time
 import tqdm
 import sys
 import json
-from cython.parallel import prange
-from matplotlib.figure import Figure
+import multiprocessing as mp
+from functools import partial
 
 planck = 6.626e-34 #J.*s
 c = 2.9979e8 # m./s
@@ -172,20 +170,26 @@ def spot_path_generator(distance): # [spots, paths]
 def dist_calc(vec):
     return np.sqrt(sum(vec*vec))
 
-def model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag):
-    for j in prange(spots.shape[0]):
-        path = paths[j,:,:]
-        if np.any(path[:,0]==1e99,0) and np.any(path[:,1]==1e99,0) and np.any(path[:,2]==1e99,0) and np.any(path[:,3]==1e99,0):
-            pass
-        else:
-            [path1_mesh, W_x_mesh] = meshgrid_custom(path[:,0],W_x)
-            [path2_mesh, W_z_mesh] = meshgrid_custom(path[:,1],W_z)
-            [path3_mesh, Td_mesh] = meshgrid_custom(path[:,2],firstDiag)
-            [path4_mesh, Ts_mesh] = meshgrid_custom(path[:,3],secondDiag)
+def besselmap(path,W_x,W_z,firstDiag,secondDiag,k):
+    if sum(path[k,:])<=1e98:
+        return (sps.jv(path[k,0],W_x)*sps.jv(path[k,1],W_z)*sps.jv(path[k,2], firstDiag)*sps.jv(path[k,3], secondDiag))**2
+    else:
+        return np.zeros(W_x.size)
 
-            totbess_matr = (sps.jv(path1_mesh.flatten(),W_x_mesh.flatten())*sps.jv(path2_mesh.flatten(),W_z_mesh.flatten())*sps.jv(path3_mesh.flatten(), Td_mesh.flatten())*sps.jv(path4_mesh.flatten(), Ts_mesh.flatten()))**2
-            prob_vals[j,:] = sum(totbess_matr,1)
-    
+def model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag):
+    for j in np.arange(paths.shape[0]):
+        path = paths[j,:,:]
+        totbess_matr = np.zeros((path.shape[0],W_x.size))
+        k_arr = np.arange(path.shape[0])
+        with mp.Pool() as pool:
+            totbess_matr = pool.map(partial(besselmap, path,W_x,W_z,firstDiag,secondDiag),k_arr)
+
+        # for k in np.arange(path.shape[0]):
+        #    if sum(path[k,:])<=1e98:
+        #        totbess_matr[k,:] = (sps.jv(path[k,0],W_x)*sps.jv(path[k,1],W_z)*sps.jv(path[k,2], firstDiag)*sps.jv(path[k,3], secondDiag))**2
+                
+        prob_vals[j,:] = sum(totbess_matr,1)
+
     return prob_vals
 
 ### GENERATE FUNCTION THAT SAVES PRESET SPOT LISTS
@@ -217,7 +221,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
     x_range = np.linspace(-ebeam_xover_size,ebeam_xover_size,2*segments)
     z_range = np.linspace(-ebeam_xover_size,ebeam_xover_size,2*segments)
 
-    t_mag = 17
+    t_mag = 15
     t_step = 10.**(-1*t_mag)#1e-15 # fs steps
     t_range = np.arange(-gauss_limit*sig_las,gauss_limit*sig_las,t_step)
     #norm_factor_array = Norm_Laser_Calculator(t_range,gauss_limit,sig_las,lam,w0,E_pulse)

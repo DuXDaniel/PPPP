@@ -82,7 +82,7 @@ def main(argv):
     sig_las = laser_res # s
     z0 = math.pi*w0**2/lam # Rayleigh range, nm
 
-    for i in np.arange(12,25):
+    for i in np.arange(18,25):
         full_init = time.time()
         data = {}
 
