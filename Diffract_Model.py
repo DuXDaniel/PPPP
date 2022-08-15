@@ -177,18 +177,27 @@ def besselmap(path,W_x,W_z,firstDiag,secondDiag,k):
         return np.zeros(W_x.size)
 
 def model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag):
+    path = paths.reshape(-1,paths.shape[2])
+
+    totbess_matr = np.zeros((path.shape[0],W_x.size))
+    k_arr = np.arange(path.shape[0])
+    with mp.Pool(processes = mp.cpu_count()-1) as pool:
+        totbess_matr = pool.map(partial(besselmap, path,W_x,W_z,firstDiag,secondDiag),k_arr)
+
+    totbess_matr = np.array(totbess_matr).reshape((paths.shape[0],paths.shape[1],W_x.size))
+
     for j in np.arange(paths.shape[0]):
-        path = paths[j,:,:]
-        totbess_matr = np.zeros((path.shape[0],W_x.size))
-        k_arr = np.arange(path.shape[0])
-        with mp.Pool() as pool:
-            totbess_matr = pool.map(partial(besselmap, path,W_x,W_z,firstDiag,secondDiag),k_arr)
+        #path = paths[j,:,:]
+        #totbess_matr = np.zeros((path.shape[0],W_x.size))
+        #k_arr = np.arange(path.shape[0])
+        #with mp.Pool(processes = max(mp.cpu_count()-1)) as pool:
+        #    totbess_matr = pool.map(partial(besselmap, path,W_x,W_z,firstDiag,secondDiag),k_arr)
 
         # for k in np.arange(path.shape[0]):
         #    if sum(path[k,:])<=1e98:
         #        totbess_matr[k,:] = (sps.jv(path[k,0],W_x)*sps.jv(path[k,1],W_z)*sps.jv(path[k,2], firstDiag)*sps.jv(path[k,3], secondDiag))**2
                 
-        prob_vals[j,:] = sum(totbess_matr,1)
+        prob_vals[j,:] = sum(totbess_matr[j,:,:],1)
 
     return prob_vals
 
