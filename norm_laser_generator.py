@@ -33,7 +33,7 @@ def omeg_las_sq(z, beam_waist, lam):
 
 @jit(nopython = True)
 def spatial_gauss(rho_xy,z,t, beam_waist,sig_las, lam):
-    val = beam_waist/np.sqrt(omeg_las_sq(z,beam_waist,lam))*np.exp(-(rho_xy**2)/(omeg_las_sq(z,beam_waist,lam)/temporal_gauss(z,t,sig_las)))
+    val = beam_waist/np.sqrt(omeg_las_sq(z,beam_waist,lam))*np.exp(-(rho_xy**2)/(omeg_las_sq(z,beam_waist,lam)))
     return val
 
 @jit(nopython = True)
