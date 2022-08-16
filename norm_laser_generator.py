@@ -22,7 +22,7 @@ e = 1.602e-19 # Coulombs
 
 @jit(nopython = True)
 def temporal_gauss(z,t,sig_las):
-    val = np.exp(-(2*(z-c*t)**2)/(sig_las**2*c**2))
+    val = np.exp(-((z-c*t)**2)/(sig_las**2*c**2))
     return val
 
 @jit(nopython = True)
@@ -33,7 +33,7 @@ def omeg_las_sq(z, beam_waist, lam):
 
 @jit(nopython = True)
 def spatial_gauss(rho_xy,z,t, beam_waist,sig_las, lam):
-    val = 1/np.pi/omeg_las_sq(z,beam_waist,lam)*np.exp(-(2*rho_xy**2)/(omeg_las_sq(z,beam_waist,lam)/temporal_gauss(z,t,sig_las)))
+    val = beam_waist/np.sqrt(omeg_las_sq(z,beam_waist,lam))*np.exp(-(rho_xy**2)/(omeg_las_sq(z,beam_waist,lam)/temporal_gauss(z,t,sig_las)))
     return val
 
 @jit(nopython = True)
@@ -43,7 +43,7 @@ def laser(rho_xy,z,t, beam_waist,sig_las, lam):
 
 @jit(nopython = True)
 def norm_laser_integrand(rho_xy,z,t,beam_waist,sig_las, lam):
-    val = 2*np.pi*rho_xy*laser(rho_xy,z,t,beam_waist,sig_las,lam)
+    val = 2*np.pi*rho_xy*varepsilon*laser(rho_xy,z,t,beam_waist,sig_las,lam)**2
     return val
 
 def laser_sum(t, gauss_limit, sig_las, beam_waist, lam):
@@ -59,21 +59,17 @@ def Norm_Laser_Calculator(t_range,gauss_limit,sig_las,lam,w0,E_pulse): # [norm_f
         laser_sum_array[i] = val[0]
 
     select_zero_laser_sum_array = np.where(laser_sum_array == 0, 1, 0)
-    norm_factor_array = np.sqrt(E_pulse/(select_zero_laser_sum_array*1e308 + laser_sum_array)/varepsilon)
+    norm_factor_array = np.sqrt(E_pulse/(select_zero_laser_sum_array*1e308 + laser_sum_array))
     norm_factor_array = norm_factor_array.astype(complex)
     norm_factor_array = norm_factor_array*(-1)*1j/freq
     return norm_factor_array
 
 def main(argv):
-    e_res=350e-15
     laser_res=350e-15
-    w0=100e-6
     E_pulse=5e-6
     beam_waist=100e-6
     gauss_limit=4
-    ebeam_dxover=0
     las_wav=517e-9
-    ebeam_vel=8.15e7
 
     theta =  0
 
