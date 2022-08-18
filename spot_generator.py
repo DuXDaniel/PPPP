@@ -27,7 +27,82 @@ def meshgrid_custom(x,y):
 def dist_calc(vec):
     return np.sqrt(sum(vec*vec))
 
-def spot_path_generator(distance): # [spots, paths]
+def crs_KD_spot_path_generator(distance):
+    print('Generating initial spot list')
+
+    dist_lim = distance # momenta units
+
+    x_shift = np.arange(-np.round(dist_lim),np.round(dist_lim)+1)
+    z_shift = np.arange(-np.round(dist_lim),np.round(dist_lim)+1)
+
+    spot_list = np.zeros((len(z_shift.flatten()),3))
+
+    spot_list[:,0] = x_shift.flatten()
+    spot_list[:,1] = z_shift.flatten()
+    spot_list[:,2] = np.zeros(len(z_shift.flatten()))
+
+    print('Culling duplicates and out of bounds spots')
+
+    val = 0
+    while (val <= len(spot_list)-2):
+        point_interest = spot_list[val,:]
+        count = val+1
+        while (count <= len(spot_list)-1):
+            if (point_interest == spot_list[count,:]).all() or (dist_calc(spot_list[count,:]) >= dist_lim) or (sum(spot_list[count,:]) % 2 != 0):
+                spot_list = np.delete(spot_list,count,0)
+            else:
+                count = count + 1
+        
+        if (dist_calc(point_interest) >= dist_lim) or (sum(point_interest) % 2 != 0):
+            spot_list = np.delete(spot_list,val,0)
+        else:
+            val = val + 1
+
+    print('Generating path lists for each spot')
+
+    spots = spot_list
+    paths_arr = spots
+
+    return spots, paths_arr
+
+def sgl_KD_spot_path_generator(distance):
+    print('Generating initial spot list')
+
+    dist_lim = distance # momenta units
+
+    z_shift = 2*np.arange(-np.round(dist_lim/2),np.round(dist_lim/2)+1)
+
+    spot_list = np.zeros((len(z_shift.flatten()),3))
+
+    spot_list[:,0] = np.zeros(len(z_shift.flatten()))
+    spot_list[:,1] = z_shift.flatten()
+    spot_list[:,2] = np.zeros(len(z_shift.flatten()))
+
+    print('Culling duplicates and out of bounds spots')
+
+    val = 0
+    while (val <= len(spot_list)-2):
+        point_interest = spot_list[val,:]
+        count = val+1
+        while (count <= len(spot_list)-1):
+            if (point_interest == spot_list[count,:]).all() or (dist_calc(spot_list[count,:]) >= dist_lim) or (sum(spot_list[count,:]) % 2 != 0):
+                spot_list = np.delete(spot_list,count,0)
+            else:
+                count = count + 1
+        
+        if (dist_calc(point_interest) >= dist_lim) or (sum(point_interest) % 2 != 0):
+            spot_list = np.delete(spot_list,val,0)
+        else:
+            val = val + 1
+
+    print('Generating path lists for each spot')
+
+    spots = spot_list
+    paths_arr = spots
+
+    return spots, paths_arr
+
+def dbl_KD_spot_path_generator(distance): # [spots, paths]
     print('Generating initial spot list')
 
     dist_lim = distance # momenta units
@@ -66,6 +141,7 @@ def spot_path_generator(distance): # [spots, paths]
 
     path_list = []
 
+    #dbl generation
     for i in np.arange(spot_list.shape[0]):
         path_list.append([])
         for l in np.arange(-dist_lim,dist_lim):
@@ -98,10 +174,10 @@ def spot_path_generator(distance): # [spots, paths]
     return spots, paths_arr
 
 def main(argv):
-    for i in np.arange(14,25):
+    for i in np.arange(0,18):
         full_init = time.time()
         data = {}
-        [spots,paths] = spot_path_generator(i)
+        [spots,paths] = crs_KD_spot_path_generator(i)
         data_dump = []
         data['spots'] = spots.tolist()
         data['paths'] = paths.tolist()
