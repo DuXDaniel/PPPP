@@ -200,7 +200,7 @@ def model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag):
 
 ### GENERATE FUNCTION THAT SAVES PRESET SPOT LISTS
 
-def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_waist=100e-6,gauss_limit=4,ebeam_dxover=0,las_wav=517e-9,ebeam_vel=8.15e7):
+def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_waist=100e-6,gauss_limit=4,ebeam_dxover=0,las_wav=517e-9,ebeam_vel=8.15e7,pos_adj_x=0,pos_adj_y=0,pos_adj_z=0):
     print('Seeding workspace with relevant information.')
 
     num_electron_MC_trial = int(4) # number of electrons to test per trial, must be square rootable
@@ -238,9 +238,15 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
     norm_factor_array = 1j*np.array(data_dump['norm_factor'],dtype=complex)
 
     [vels, elecTime] = Electron_Generator(num_electron_MC_trial,xover_angle,0,vel,t_step)
+
+    pos_adj = np.ones(vels.shape)
+    pos_adj[:,0] = pos_adj[:,0] + np.ones(vels.shape[0])*pos_adj_x
+    pos_adj[:,1] = pos_adj[:,1] + np.ones(vels.shape[0])*pos_adj_z
+    pos_adj[:,2] = pos_adj[:,2] + np.ones(vels.shape[0])*pos_adj_y
+
     dist_traveled = np.zeros((num_electron_MC_trial,3))
     phase_arr = np.zeros(num_electron_MC_trial)
-    pos = vels*(t_range[1])
+    pos = vels*(t_range[1]) + pos_adj
     vel_arr = vels
     vel_mag_arr = np.sqrt(np.sum(vels*vels,1))
     moment_arr = gamma(vel_arr)*mass_e*vels
