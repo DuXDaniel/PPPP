@@ -174,10 +174,10 @@ def dbl_KD_spot_path_generator(distance): # [spots, paths]
     return spots, paths_arr
 
 def main(argv):
-    for i in np.arange(0,18):
+    for i in np.arange(0,100):
         full_init = time.time()
         data = {}
-        [spots,paths] = crs_KD_spot_path_generator(i)
+        [spots,paths] = sgl_KD_spot_path_generator(i)
         data_dump = []
         data['spots'] = spots.tolist()
         data['paths'] = paths.tolist()

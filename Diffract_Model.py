@@ -176,15 +176,27 @@ def dbl_KD_besselmap(path,W_x,W_z,firstDiag,secondDiag,k):
     else:
         return np.zeros(W_x.size)
 
+def crs_KD_model_caller(prob_vals, spots, paths, W):
+    path = paths
+
+    totbess_matr = np.zeros((path.shape[0],W.size))
+    
+    for k in np.arange(path.shape[0]):
+        totbess_matr[k,:] = sps.jv(path[k,1],W)
+    
+    prob_vals = totbess_matr
+
+    return prob_vals
+
 def sgl_KD_model_caller(prob_vals, spots, paths, W):
     path = paths
 
     totbess_matr = np.zeros((path.shape[0],W.size))
     
     for k in np.arange(path.shape[0]):
-        totbess_matr[k,:] = sps.jv(path[k],W)
-
-    prob_vals[j,:] = sum(totbess_matr,0)
+        totbess_matr[k,:] = sps.jv(path[k,1]/2,W)
+    
+    prob_vals = totbess_matr
 
     return prob_vals
 
@@ -283,6 +295,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
     data_dump = json.load(data)
     spots = np.array(data_dump['spots'])
     paths = np.array(data_dump['paths'])
+    print(paths)
 
     print('Starting calculation')
 
@@ -292,7 +305,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
         random_sel = np.random.rand(num_electron_MC_trial)
 
         if (calcType == 0):
-            G = sig_las*np.sqrt(np.pi/2)*np.exp(-(pos[:,0] - pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0] + pos[:,1] - 2*c*t_range[i])/(sig_las*c*np.sqrt(2))) - sps.erf((pos[:,0] + pos[:,1] - 2*c*(t_range[i] + t_step))/(sig_las*c*np.sqrt(2))))
+            G = sig_las*np.sqrt(np.pi)/2*np.exp(-(pos[:,0] - pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0] + pos[:,1] - 2*c*t_range[i])/(sig_las*c*np.sqrt(2))) - sps.erf((pos[:,0] + pos[:,1] - 2*c*(t_range[i] + t_step))/(sig_las*c*np.sqrt(2))))
             omeg_las_sq_x = w0**2*(1+pos[:,0]**2/z0**2)
             rho_zy_sq = pos[:,1]**2 + pos[:,2]**2
             omeg_las_sq_z = w0**2*(1+pos[:,1]**2/z0**2)
@@ -301,7 +314,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
 
             prob_vals = np.zeros((spots.shape[0],num_electron_MC_trial))
 
-            prob_vals = sgl_KD_model_caller(prob_vals, spots, paths, W)
+            prob_vals = crs_KD_model_caller(prob_vals, spots, paths, W)
         elif (calcType == 1):
             G = sig_las*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,1])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
             omeg_las_sq = w0**2*(1+pos[:,1]**2/z0**2)
@@ -342,7 +355,12 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
         
         for j in np.arange(num_electron_MC_trial):
             prob_val_cumul[:,j] = np.cumsum(prob_vals[:,j]/sum(prob_vals[:,j]))
-            indices[j] = np.nonzero(prob_val_cumul > np.full(prob_val_cumul.shape,random_sel[j]))[0][0]
+            if (calcType == 0):
+                indices[j] = np.nonzero(prob_val_cumul > np.full(prob_val_cumul.shape,random_sel[j]))[0][0]
+            elif (calcType == 1):
+                indices[j] = np.nonzero(prob_val_cumul > np.full(prob_val_cumul.shape,random_sel[j]))[0][0]
+            elif (calcType == 2):
+                indices[j] = np.nonzero(prob_val_cumul > np.full(prob_val_cumul.shape,random_sel[j]))[0][0]
         
         momenta_shift = spots[indices,:]*hbar/lam
 
@@ -366,7 +384,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
     return data
 
 def main(argv):
-    PPPP_calculator(calcType=2)
+    PPPP_calculator(calcType=0)
     #sys.exit(appctxt.app.exec())
 
 if __name__ == '__main__':
