@@ -20,7 +20,7 @@ e = 1.602e-19 # Coulombs
 
 @jit(nopython = True)
 def temporal_gauss(z,t,sig_las):
-    val = np.exp(-(2*(z-c*t)**2)/(sig_las**2*c**2))
+    val = np.exp(-((z-c*t)**2)/(sig_las**2*c**2))
     return val
 
 @jit(nopython = True)
@@ -31,7 +31,7 @@ def omeg_las_sq(z, beam_waist, lam):
 
 @jit(nopython = True)
 def spatial_gauss(rho_xy,z,t, beam_waist,sig_las, lam):
-    val = 1/np.pi/omeg_las_sq(z,beam_waist,lam)*np.exp(-(2*rho_xy**2)/(omeg_las_sq(z,beam_waist,lam)/temporal_gauss(z,t,sig_las)))
+    val = beam_waist/np.sqrt(omeg_las_sq(z,beam_waist,lam))*np.exp(-(rho_xy**2)/(omeg_las_sq(z,beam_waist,lam)))
     return val
 
 @jit(nopython = True)
@@ -41,7 +41,7 @@ def laser(rho_xy,z,t, beam_waist,sig_las, lam):
 
 @jit(nopython = True)
 def norm_laser_integrand(rho_xy,z,t,beam_waist,sig_las, lam):
-    val = 2*np.pi*rho_xy*laser(rho_xy,z,t,beam_waist,sig_las,lam)
+    val = 2*np.pi*rho_xy*varepsilon*laser(rho_xy,z,t,beam_waist,sig_las,lam)**2
     return val
 
 def laser_sum(t, gauss_limit, sig_las, beam_waist, lam):
@@ -57,7 +57,7 @@ def Norm_Laser_Calculator(t_range,gauss_limit,sig_las,lam,w0,E_pulse): # [norm_f
         laser_sum_array[i] = val[0]
 
     select_zero_laser_sum_array = np.where(laser_sum_array == 0, 1, 0)
-    norm_factor_array = np.sqrt(E_pulse/(select_zero_laser_sum_array*1e308 + laser_sum_array)/varepsilon)
+    norm_factor_array = np.sqrt(E_pulse/(select_zero_laser_sum_array*1e308 + laser_sum_array))
     norm_factor_array = norm_factor_array.astype(complex)
     norm_factor_array = norm_factor_array*(-1)*1j/freq
     return norm_factor_array
@@ -182,7 +182,7 @@ def crs_KD_model_caller(prob_vals, spots, paths, W):
     totbess_matr = np.zeros((path.shape[0],W.size))
     
     for k in np.arange(path.shape[0]):
-        totbess_matr[k,:] = sps.jv(path[k,1],W)
+        totbess_matr[k,:] = sps.jv(path[k,1],W)**2
     
     prob_vals = totbess_matr
 
@@ -194,13 +194,14 @@ def sgl_KD_model_caller(prob_vals, spots, paths, W):
     totbess_matr = np.zeros((path.shape[0],W.size))
     
     for k in np.arange(path.shape[0]):
-        totbess_matr[k,:] = sps.jv(path[k,1]/2,W)
+        totbess_matr[k,:] = sps.jv(path[k,1]/2,W)**2
     
     prob_vals = totbess_matr
 
     return prob_vals
 
 def dbl_KD_model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag):
+    '''
     path = paths.reshape(-1,paths.shape[2])
 
     totbess_matr = np.zeros((path.shape[0],W_x.size))
@@ -209,15 +210,15 @@ def dbl_KD_model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag
         totbess_matr = pool.map(partial(dbl_KD_besselmap, path,W_x,W_z,firstDiag,secondDiag),k_arr)
 
     totbess_matr = np.array(totbess_matr).reshape((paths.shape[0],paths.shape[1],W_x.size))
-
+    '''
     for j in np.arange(paths.shape[0]):
-        '''
+        #'''
         path = paths[j,:,:]
         totbess_matr = np.zeros((path.shape[0],W_x.size))
         for k in np.arange(path.shape[0]):
             totbess_matr[k,:] = dbl_KD_besselmap(path,W_x,W_z,firstDiag,secondDiag,k)
-        '''
-        prob_vals[j,:] = sum(totbess_matr[j,:,:],0)
+        #'''
+        prob_vals[j,:] = sum(totbess_matr,0) # [j,:,:]
 
     return prob_vals
 
@@ -250,15 +251,12 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
     x_range = np.linspace(-ebeam_xover_size,ebeam_xover_size,2*segments)
     z_range = np.linspace(-ebeam_xover_size,ebeam_xover_size,2*segments)
 
-    t_mag = 15
+    t_mag = 17
     t_step = 10.**(-1*t_mag)#1e-15 # fs steps
-    t_range = np.arange(-gauss_limit*sig_las,gauss_limit*sig_las,t_step)
-    #norm_factor_array = Norm_Laser_Calculator(t_range,gauss_limit,sig_las,lam,w0,E_pulse)
-    
-    filename = "norm_factor_" + str(t_mag) + ".json"
-    data = open(filename)
-    data_dump = json.load(data)
-    norm_factor_array = 1j*np.array(data_dump['norm_factor'],dtype=complex)
+    norm_factor_array = Norm_Laser_Calculator(np.array([0]),gauss_limit,sig_las,lam,w0,E_pulse)
+
+    curtime = -2*sig_las
+    timestop = 2*sig_las
 
     [vels, elecTime] = Electron_Generator(num_electron_MC_trial,xover_angle,0,vel,t_step)
 
@@ -269,7 +267,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
 
     dist_traveled = np.zeros((num_electron_MC_trial,3))
     phase_arr = np.zeros(num_electron_MC_trial)
-    pos = vels*(t_range[1]) + pos_adj
+    pos = vels*(curtime) + pos_adj
     vel_arr = vels
     vel_mag_arr = np.sqrt(np.sum(vels*vels,1))
     moment_arr = gamma(vel_arr)*mass_e*vels
@@ -284,7 +282,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
 
     #[spots,paths] = spot_path_generator(10) # distance of 100 momenta units away from direct beam
     
-    point_distance = 8
+    point_distance = 4
     if (calcType == 0):
         filename = "./crs_KD_spots/spot_" + str(point_distance) + ".json"
     elif (calcType == 1):
@@ -295,51 +293,52 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
     data_dump = json.load(data)
     spots = np.array(data_dump['spots'])
     paths = np.array(data_dump['paths'])
-    print(paths)
 
     print('Starting calculation')
 
-    pbar = tqdm.tqdm(total=t_range.size,desc='Current Calculation Progress',position=1,leave=True)
+    pbar = tqdm.tqdm(total=int((timestop-curtime)/t_step + 1),desc='Current Calculation Progress',position=1,leave=True)
     
-    for i in np.arange(t_range.size):
+    while curtime <= timestop:
         random_sel = np.random.rand(num_electron_MC_trial)
 
         if (calcType == 0):
-            G = sig_las*np.sqrt(np.pi)/2*np.exp(-(pos[:,0] - pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0] + pos[:,1] - 2*c*t_range[i])/(sig_las*c*np.sqrt(2))) - sps.erf((pos[:,0] + pos[:,1] - 2*c*(t_range[i] + t_step))/(sig_las*c*np.sqrt(2))))
+            G = sig_las*np.sqrt(np.pi)/2*np.exp(-(pos[:,0] - pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0] + pos[:,1] - 2*c*curtime)/(sig_las*c*np.sqrt(2))) - sps.erf((pos[:,0] + pos[:,1] - 2*c*(curtime + t_step))/(sig_las*c*np.sqrt(2))))
             omeg_las_sq_x = w0**2*(1+pos[:,0]**2/z0**2)
             rho_zy_sq = pos[:,1]**2 + pos[:,2]**2
             omeg_las_sq_z = w0**2*(1+pos[:,1]**2/z0**2)
             rho_xy_sq = pos[:,0]**2 + pos[:,2]**2
-            W = -e**2/2/hbar/mass_e*2*norm_factor_array[i]**2*w0**2/np.sqrt(omeg_las_sq_x)/np.sqrt(omeg_las_sq_z)*np.exp(-rho_xy_sq/omeg_las_sq_z - rho_zy_sq/omeg_las_sq_x)*G
+            W = -e**2/2/hbar/mass_e*2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_x)/np.sqrt(omeg_las_sq_z)*np.exp(-rho_xy_sq/omeg_las_sq_z - rho_zy_sq/omeg_las_sq_x)*G
+            W = abs(W).real
 
             prob_vals = np.zeros((spots.shape[0],num_electron_MC_trial))
 
             prob_vals = crs_KD_model_caller(prob_vals, spots, paths, W)
         elif (calcType == 1):
-            G = sig_las*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,1])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
+            G = sig_las*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,1])**2/(sig_las**2*c**2))*(sps.erf(curtime*np.sqrt(2)/sig_las) - sps.erf((curtime+t_step)*np.sqrt(2)/sig_las))
             omeg_las_sq = w0**2*(1+pos[:,1]**2/z0**2)
             rho_xy_sq = pos[:,0]**2 + pos[:,2]**2
-            W = e**2/2/hbar/mass_e*norm_factor_array[i]**2*w0**2/omeg_las_sq*np.exp(-2*rho_xy_sq/omeg_las_sq)*G
+            W = e**2/2/hbar/mass_e*norm_factor_array**2*w0**2/omeg_las_sq*np.exp(-2*rho_xy_sq/omeg_las_sq)*G
+            W = abs(W).real
 
             prob_vals = np.zeros((spots.shape[0],num_electron_MC_trial))
 
             prob_vals = sgl_KD_model_caller(prob_vals, spots, paths, W)
         elif (calcType == 2):
-            G_x = sig_las*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,0])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
+            G_x = sig_las*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,0])**2/(sig_las**2*c**2))*(sps.erf(curtime*np.sqrt(2)/sig_las) - sps.erf((curtime+t_step)*np.sqrt(2)/sig_las))
             omeg_las_sq_x = w0**2*(1+pos[:,0]**2/z0**2)
             rho_zy_sq = pos[:,1]**2 + pos[:,2]**2
-            W_x = e**2/2/hbar/mass_e*norm_factor_array[i]**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*G_x
+            W_x = e**2/2/hbar/mass_e*norm_factor_array**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*G_x
             
-            G_z = sig_las*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,1])**2/(sig_las**2*c**2))*(sps.erf(t_range[i]*np.sqrt(2)/sig_las) - sps.erf((t_range[i]+t_step)*np.sqrt(2)/sig_las))
+            G_z = sig_las*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,1])**2/(sig_las**2*c**2))*(sps.erf(curtime*np.sqrt(2)/sig_las) - sps.erf((curtime+t_step)*np.sqrt(2)/sig_las))
             omeg_las_sq_z = w0**2*(1+pos[:,1]**2/z0**2)
             rho_xy_sq = pos[:,0]**2 + pos[:,2]**2
-            W_z = e**2/2/hbar/mass_e*norm_factor_array[i]**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*G_z
+            W_z = e**2/2/hbar/mass_e*norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*G_z
             
-            C0 = -e**2/2/hbar/mass_e*2*norm_factor_array[i]**2*w0**2/np.sqrt(omeg_las_sq_x)/np.sqrt(omeg_las_sq_z)*np.exp(-rho_xy_sq/omeg_las_sq_z - rho_zy_sq/omeg_las_sq_x)
-            Tzx = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]-pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]+pos[:,1]-2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]+pos[:,1]-2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
-            Tznx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]+pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]-pos[:,1]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]-pos[:,1]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
-            Tnzx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]+pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((-pos[:,0]+pos[:,1]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((-pos[:,0]+pos[:,1]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
-            Tnznx = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]-pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]+pos[:,1]+2*c*t_range[i])/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]+pos[:,1]+2*c*(t_range[i]+t_step))/(sig_las*c*np.sqrt(2))))
+            C0 = -e**2/2/hbar/mass_e*2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_x)/np.sqrt(omeg_las_sq_z)*np.exp(-rho_xy_sq/omeg_las_sq_z - rho_zy_sq/omeg_las_sq_x)
+            Tzx = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]-pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]+pos[:,1]-2*c*curtime)/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]+pos[:,1]-2*c*(curtime+t_step))/(sig_las*c*np.sqrt(2))))
+            Tznx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]+pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]-pos[:,1]+2*c*curtime)/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]-pos[:,1]+2*c*(curtime+t_step))/(sig_las*c*np.sqrt(2))))
+            Tnzx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]+pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((-pos[:,0]+pos[:,1]+2*c*curtime)/(sig_las*c*np.sqrt(2)))-sps.erf((-pos[:,0]+pos[:,1]+2*c*(curtime+t_step))/(sig_las*c*np.sqrt(2))))
+            Tnznx = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]-pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]+pos[:,1]+2*c*curtime)/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]+pos[:,1]+2*c*(curtime+t_step))/(sig_las*c*np.sqrt(2))))
 
             W_x = abs(W_x).real
             W_z = abs(W_z).real
@@ -355,12 +354,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
         
         for j in np.arange(num_electron_MC_trial):
             prob_val_cumul[:,j] = np.cumsum(prob_vals[:,j]/sum(prob_vals[:,j]))
-            if (calcType == 0):
-                indices[j] = np.nonzero(prob_val_cumul > np.full(prob_val_cumul.shape,random_sel[j]))[0][0]
-            elif (calcType == 1):
-                indices[j] = np.nonzero(prob_val_cumul > np.full(prob_val_cumul.shape,random_sel[j]))[0][0]
-            elif (calcType == 2):
-                indices[j] = np.nonzero(prob_val_cumul > np.full(prob_val_cumul.shape,random_sel[j]))[0][0]
+            indices[j] = np.nonzero(prob_val_cumul > np.full(prob_val_cumul.shape,random_sel[j]))[0][0]
         
         momenta_shift = spots[indices,:]*hbar/lam
 
@@ -376,15 +370,106 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
         wavelength_arr = planck/moment_mag_arr
         phase_step = dist_travel_mag/wavelength_arr*2*math.pi
         phase_arr = phase_arr + phase_step - phase_exp
+        curtime = curtime + t_step
         pbar.update(1)
 
     pbar.close()
 
-    data = voxel_grid_cumulative_phase_data
-    return data
+    print(np.mean(phase_arr))
+    print(np.std(phase_arr))
+
+    return phase_arr, pos, energ_arr, vel_arr
 
 def main(argv):
     PPPP_calculator(calcType=0)
+    '''
+    vel = 8.15e7 # m/s
+    sig_las = 350e-15 # s
+    shift_mag = sig_las*vel # m
+
+    y_shifts = [-1,0,1]*shift_mag; # m
+    # cross KD points
+    x_shifts = [-100,-50,-50,-50,0,0,0,50]*1e-6 # m
+    z_shifts = [0,50,0,-50,0,-50,-100,-50]*1e-6 # m
+
+    [x_mesh, y_mesh] = meshgrid(x_shifts, y_shifts)
+    [z_mesh, y_mesh] = meshgrid(z_shifts, y_shifts)
+    x_arr = x_mesh.flatten()
+    z_arr = z_mesh.flatten()
+    y_arr = y_mesh.flatten()
+
+    for i in np.arange(x_arr.size):
+        for j in np.arange(z_arr.size):
+            for k in np.arange(y_arr.size):
+                [phase_arr, pos, energ_arr, vel_arr] = PPPP_calculator(pos_adj_x=x_arr[i],pos_adj_y=y_arr[k],pos_adj_z=z_arr[j],calcType=0)
+                
+                data_dump = []
+                data['phase_arr'] = phase_arr.tolist()
+                data['pos'] = pos.tolist()
+                data['energ_arr'] = energ_arr.tolist()
+                data['vel_arr'] = vel_arr.tolist()
+                data_dump.append(data)
+                filename = "crs_" + "x_" + str(int(x_arr[i]/1e-6)) + "_z_" + str(int(z_arr[j]/1e-6)) + "_y_" + str(int(y_arr[k]/shift_mag)) + ".json"
+                with open(filename, "w") as outfile:
+                    json_data = json.dump(data,outfile)
+                full_elapsed = time.time() - full_init
+                print(full_elapsed)
+
+    # single KD points
+    x_shifts = [-100,-50,-50,0,0,0]
+    z_shifts = [0,50,0,100,50,0]
+
+    [x_mesh, y_mesh] = meshgrid(x_shifts, y_shifts)
+    [z_mesh, y_mesh] = meshgrid(z_shifts, y_shifts)
+    x_arr = x_mesh.flatten()
+    z_arr = z_mesh.flatten()
+    y_arr = y_mesh.flatten()
+
+    for i in np.arange(x_arr.size):
+        for j in np.arange(z_arr.size):
+            for k in np.arange(y_arr.size):
+                PPPP_calculator(pos_adj_x=x_arr[i],pos_adj_y=y_arr[k],pos_adj_z=z_arr[j],calcType=1)
+                
+                data_dump = []
+                data['phase_arr'] = phase_arr.tolist()
+                data['pos'] = pos.tolist()
+                data['energ_arr'] = energ_arr.tolist()
+                data['vel_arr'] = vel_arr.tolist()
+                data_dump.append(data)
+                filename = "sgl_" + "x_" + str(int(x_arr[i]/1e-6)) + "_z_" + str(int(z_arr[j]/1e-6)) + "_y_" + str(int(y_arr[k]/shift_mag)) + ".json"
+                with open(filename, "w") as outfile:
+                    json_data = json.dump(data,outfile)
+                full_elapsed = time.time() - full_init
+                print(full_elapsed)
+
+    # double KD points
+    x_shifts = [-100,-50,-50,0]
+    z_shift = [0,50,0,0]
+
+    [x_mesh, y_mesh] = meshgrid(x_shifts, y_shifts)
+    [z_mesh, y_mesh] = meshgrid(z_shifts, y_shifts)
+    x_arr = x_mesh.flatten()
+    z_arr = z_mesh.flatten()
+    y_arr = y_mesh.flatten()
+
+    for i in np.arange(x_arr.size):
+        for j in np.arange(z_arr.size):
+            for k in np.arange(y_arr.size):
+                PPPP_calculator(pos_adj_x=x_arr[i],pos_adj_y=y_arr[k],pos_adj_z=z_arr[j],calcType=2)
+                
+                data_dump = []
+                data['phase_arr'] = phase_arr.tolist()
+                data['pos'] = pos.tolist()
+                data['energ_arr'] = energ_arr.tolist()
+                data['vel_arr'] = vel_arr.tolist()
+                data_dump.append(data)
+                filename = "dbl_" + "x_" + str(int(x_arr[i]/1e-6)) + "_z_" + str(int(z_arr[j]/1e-6)) + "_y_" + str(int(y_arr[k]/shift_mag)) + ".json"
+                with open(filename, "w") as outfile:
+                    json_data = json.dump(data,outfile)
+                full_elapsed = time.time() - full_init
+                print(full_elapsed)
+    '''
+
     #sys.exit(appctxt.app.exec())
 
 if __name__ == '__main__':
