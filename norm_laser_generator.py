@@ -66,8 +66,8 @@ def Norm_Laser_Calculator(t_range,gauss_limit,sig_las,lam,w0,E_pulse): # [norm_f
 
 def main(argv):
     laser_res=350e-15
-    E_pulse=5e-6
-    beam_waist=100e-6
+    E_pulse=10e-6
+    beam_waist=20e-6
     gauss_limit=4
     las_wav=517e-9
 

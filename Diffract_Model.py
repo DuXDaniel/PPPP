@@ -170,9 +170,13 @@ def spot_path_generator(distance): # [spots, paths]
 def dist_calc(vec):
     return np.sqrt(sum(vec*vec))
 
-def dbl_KD_besselmap(path,W_x,W_z,firstDiag,secondDiag,k):
+def dbl_KD_besselmap(path,W_x,W_z,firstDiag,secondDiag, dWx, dWz, dFirstDiag, dSecondDiag,k):
     if sum(path[k,:])<=1e98:
-        return (sps.jv(path[k,0],W_x)*sps.jv(path[k,1],W_z)*sps.jv(path[k,2], firstDiag)*sps.jv(path[k,3], secondDiag))**2
+        first_part = dWx*(sps.jv(path[k,0],W_x)*(sps.jv(path[k,0]-1,W_x) - sps.jv(path[k,0]+1,W_x)))*sps.jv(path[k,1],W_z)**2*sps.jv(path[k,2], firstDiag)**2*sps.jv(path[k,3], secondDiag)**2
+        second_part = dWz*(sps.jv(path[k,1],W_z)*(sps.jv(path[k,1]-1,W_z) - sps.jv(path[k,1]+1,W_z)))*sps.jv(path[k,0],W_x)**2*sps.jv(path[k,2], firstDiag)**2*sps.jv(path[k,3], secondDiag)**2
+        third_part = dFirstDiag*(sps.jv(path[k,2],firstDiag)*(sps.jv(path[k,2]-1,firstDiag) - sps.jv(path[k,2]+1,firstDiag)))*sps.jv(path[k,1],W_z)**2*sps.jv(path[k,0], W_x)**2*sps.jv(path[k,3], secondDiag)**2
+        fourth_part = dSecondDiag*(sps.jv(path[k,3],secondDiag)*(sps.jv(path[k,3]-1,secondDiag) - sps.jv(path[k,3]+1,secondDiag)))*sps.jv(path[k,1],W_z)**2*sps.jv(path[k,0], W_x)**2*sps.jv(path[k,2], firstDiag)**2
+        return first_part + second_part + third_part + fourth_part
     else:
         return np.zeros(W_x.size)
 
@@ -182,7 +186,7 @@ def crs_KD_model_caller(prob_vals, spots, paths, W):
     totbess_matr = np.zeros((path.shape[0],W.size))
     
     for k in np.arange(path.shape[0]):
-        totbess_matr[k,:] = sps.jv(path[k,1],W)**2
+        totbess_matr[k,:] = sps.jv(path[k,1],W)*(sps.jv(path[k,1]-1,W)-sps.jv(path[k,1]+1,W)) #sps.jv(path[k,1],W)**2
     
     prob_vals = totbess_matr
 
@@ -194,13 +198,13 @@ def sgl_KD_model_caller(prob_vals, spots, paths, W):
     totbess_matr = np.zeros((path.shape[0],W.size))
     
     for k in np.arange(path.shape[0]):
-        totbess_matr[k,:] = sps.jv(path[k,1]/2,W)**2
+        totbess_matr[k,:] = sps.jv(path[k,1]/2,W)*(sps.jv(path[k,1]/2-1,W)-sps.jv(path[k,1]/2+1,W)) #sps.jv(path[k,1]/2,W)**2
     
     prob_vals = totbess_matr
 
     return prob_vals
 
-def dbl_KD_model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag):
+def dbl_KD_model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag, dWx, dWz, dFirstDiag, dSecondDiag):
     '''
     path = paths.reshape(-1,paths.shape[2])
 
@@ -216,15 +220,15 @@ def dbl_KD_model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag
         path = paths[j,:,:]
         totbess_matr = np.zeros((path.shape[0],W_x.size))
         for k in np.arange(path.shape[0]):
-            totbess_matr[k,:] = dbl_KD_besselmap(path,W_x,W_z,firstDiag,secondDiag,k)
+            totbess_matr[k,:] = dbl_KD_besselmap(path,W_x,W_z,firstDiag,secondDiag, dWx, dWz, dFirstDiag, dSecondDiag, k)
         #'''
-        prob_vals[j,:] = sum(totbess_matr,0) # [j,:,:]
+        prob_vals[j,:] = sum(totbess_matr,0)**2 # [j,:,:]
 
     return prob_vals
 
 ### GENERATE FUNCTION THAT SAVES PRESET SPOT LISTS
 
-def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_waist=100e-6,gauss_limit=4,ebeam_dxover=0,las_wav=517e-9,ebeam_vel=8.15e7,pos_adj_x=0,pos_adj_y=0,pos_adj_z=0,calcType=2):
+def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,gauss_limit=4,ebeam_dxover=0,las_wav=517e-9,ebeam_vel=2.0844e8,pos_adj_x=0,pos_adj_y=0,pos_adj_z=0,calcType=0,t_mag=15):
     print('Seeding workspace with relevant information.')
 
     num_electron_MC_trial = int(100) # number of electrons to test per trial, must be square rootable
@@ -251,7 +255,6 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
     x_range = np.linspace(-ebeam_xover_size,ebeam_xover_size,2*segments)
     z_range = np.linspace(-ebeam_xover_size,ebeam_xover_size,2*segments)
 
-    t_mag = 17
     t_step = 10.**(-1*t_mag)#1e-15 # fs steps
     norm_factor_array = Norm_Laser_Calculator(np.array([0]),gauss_limit,sig_las,lam,w0,E_pulse)
 
@@ -282,7 +285,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
 
     #[spots,paths] = spot_path_generator(10) # distance of 100 momenta units away from direct beam
     
-    point_distance = 4
+    point_distance = 5
     if (calcType == 0):
         filename = "./crs_KD_spots/spot_" + str(point_distance) + ".json"
     elif (calcType == 1):
@@ -302,7 +305,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
         random_sel = np.random.rand(num_electron_MC_trial)
 
         if (calcType == 0):
-            G = sig_las*np.sqrt(np.pi)/2*np.exp(-(pos[:,0] - pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0] + pos[:,1] - 2*c*curtime)/(sig_las*c*np.sqrt(2))) - sps.erf((pos[:,0] + pos[:,1] - 2*c*(curtime + t_step))/(sig_las*c*np.sqrt(2))))
+            G = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0] - pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0] + pos[:,1] - 2*c*curtime)/(sig_las*c*np.sqrt(2))) - sps.erf((pos[:,0] + pos[:,1] - 2*c*(curtime + t_step))/(sig_las*c*np.sqrt(2))))
             omeg_las_sq_x = w0**2*(1+pos[:,0]**2/z0**2)
             rho_zy_sq = pos[:,1]**2 + pos[:,2]**2
             omeg_las_sq_z = w0**2*(1+pos[:,1]**2/z0**2)
@@ -314,7 +317,7 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
 
             prob_vals = crs_KD_model_caller(prob_vals, spots, paths, W)
         elif (calcType == 1):
-            G = sig_las*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,1])**2/(sig_las**2*c**2))*(sps.erf(curtime*np.sqrt(2)/sig_las) - sps.erf((curtime+t_step)*np.sqrt(2)/sig_las))
+            G = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(2*pos[:,1])**2/(sig_las**2*c**2))*(sps.erf(curtime*np.sqrt(2)/sig_las) - sps.erf((curtime+t_step)*np.sqrt(2)/sig_las))
             omeg_las_sq = w0**2*(1+pos[:,1]**2/z0**2)
             rho_xy_sq = pos[:,0]**2 + pos[:,2]**2
             W = e**2/2/hbar/mass_e*norm_factor_array**2*w0**2/omeg_las_sq*np.exp(-2*rho_xy_sq/omeg_las_sq)*G
@@ -340,15 +343,31 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
             Tnzx = -sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]+pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((-pos[:,0]+pos[:,1]+2*c*curtime)/(sig_las*c*np.sqrt(2)))-sps.erf((-pos[:,0]+pos[:,1]+2*c*(curtime+t_step))/(sig_las*c*np.sqrt(2))))
             Tnznx = sig_las/2*np.sqrt(np.pi/2)*np.exp(-(pos[:,0]-pos[:,1])**2/(2*sig_las**2*c**2))*(sps.erf((pos[:,0]+pos[:,1]+2*c*curtime)/(sig_las*c*np.sqrt(2)))-sps.erf((pos[:,0]+pos[:,1]+2*c*(curtime+t_step))/(sig_las*c*np.sqrt(2))))
 
-            W_x = abs(W_x).real
-            W_z = abs(W_z).real
-            firstDiag = abs(C0*(Tzx+Tnznx)).real
-            secondDiag = abs(C0*(Tznx+Tnzx)).real
+            dGx = np.exp(-2*(pos[:,0]-c*(curtime + t_step))**2/(c**2*sig_las**2)) - np.exp(-2*(pos[:,0]-c*(curtime))**2/(c**2*sig_las**2))
+            dWx = -e**2/hbar/mass_e*2*norm_factor_array**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*dGx
+
+            dGz = np.exp(-2*(pos[:,1]-c*(curtime + t_step))**2/(c**2*sig_las**2)) - np.exp(-2*(pos[:,1]-c*(curtime))**2/(c**2*sig_las**2))
+            dWz = -e**2/hbar/mass_e*2*norm_factor_array**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*dGx
+
+            dTzx = np.exp(-(pos[:,0] - pos[:,1])**2/(2*c**2*sig_las**2))*(np.exp(-(pos[:,0] + pos[:,1] - 2*c*(curtime + t_step))**2/(2*c**2*sig_las**2)) - np.exp(-(pos[:,0] + pos[:,1] - 2*c*(curtime + t_step))**2/(2*c**2*sig_las**2)))
+            dTnznx = np.exp(-(pos[:,0] - pos[:,1])**2/(2*c**2*sig_las**2))*(np.exp(-(pos[:,0] + pos[:,1] + 2*c*(curtime + t_step))**2/(2*c**2*sig_las**2)) - np.exp(-(pos[:,0] + pos[:,1] + 2*c*(curtime + t_step))**2/(2*c**2*sig_las**2)))
+            dTznx = np.exp(-(pos[:,0] + pos[:,1])**2/(2*c**2*sig_las**2))*(np.exp(-(pos[:,0] - pos[:,1] + 2*c*(curtime + t_step))**2/(2*c**2*sig_las**2)) - np.exp(-(pos[:,0] - pos[:,1] + 2*c*(curtime + t_step))**2/(2*c**2*sig_las**2)))
+            dTnzx = np.exp(-(pos[:,0] + pos[:,1])**2/(2*c**2*sig_las**2))*(np.exp(-(-pos[:,0] + pos[:,1] + 2*c*(curtime + t_step))**2/(2*c**2*sig_las**2)) - np.exp(-(-pos[:,0] + pos[:,1] + 2*c*(curtime + t_step))**2/(2*c**2*sig_las**2)))
+
+            W_x = W_x.real
+            dWx = dWx.real
+            W_z = W_z.real
+            dWz = dWz.real
+            firstDiag = (C0*(Tzx+Tnznx)).real
+            dFirstDiag = (C0*(dTzx+dTnznx)).real
+            secondDiag = (C0*(Tznx+Tnzx)).real
+            dSecondDiag = (C0*(dTznx+dTnzx)).real
 
             prob_vals = np.zeros((spots.shape[0],num_electron_MC_trial))
 
-            prob_vals = dbl_KD_model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag)
+            prob_vals = dbl_KD_model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag, dWx, dWz, dFirstDiag, dSecondDiag)
     
+        prob_vals = np.absolute(prob_vals)
         prob_val_cumul = np.zeros(prob_vals.shape)
         indices = np.zeros(num_electron_MC_trial, dtype=int)
         
@@ -370,18 +389,34 @@ def PPPP_calculator(e_res=350e-15,laser_res=350e-15,w0=100e-6,E_pulse=5e-6,beam_
         wavelength_arr = planck/moment_mag_arr
         phase_step = dist_travel_mag/wavelength_arr*2*math.pi
         phase_arr = phase_arr + phase_step - phase_exp
+
+        if (curtime <= 0 and curtime+t_step >= 0):
+            print(prob_vals)
         curtime = curtime + t_step
         pbar.update(1)
 
     pbar.close()
 
+    #print(phase_arr)
     print(np.mean(phase_arr))
     print(np.std(phase_arr))
 
     return phase_arr, pos, energ_arr, vel_arr
 
 def main(argv):
-    PPPP_calculator(calcType=0)
+    time_arr = np.arange(12,26)
+    for i in time_arr:
+        [phase_arr, pos, energ_arr, vel_arr] = PPPP_calculator(calcType=0,t_mag=i)
+                
+        data_dump = []
+        data['phase_arr'] = phase_arr.tolist()
+        data['pos'] = pos.tolist()
+        data['energ_arr'] = energ_arr.tolist()
+        data['vel_arr'] = vel_arr.tolist()
+        data_dump.append(data)
+        filename = "crs_" + "t_" + str(i) + ".json"
+        with open(filename, "w") as outfile:
+            json_data = json.dump(data,outfile)
     '''
     vel = 8.15e7 # m/s
     sig_las = 350e-15 # s
@@ -412,8 +447,6 @@ def main(argv):
                 filename = "crs_" + "x_" + str(int(x_arr[i]/1e-6)) + "_z_" + str(int(z_arr[j]/1e-6)) + "_y_" + str(int(y_arr[k]/shift_mag)) + ".json"
                 with open(filename, "w") as outfile:
                     json_data = json.dump(data,outfile)
-                full_elapsed = time.time() - full_init
-                print(full_elapsed)
 
     # single KD points
     x_shifts = [-100,-50,-50,0,0,0]
