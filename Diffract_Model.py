@@ -229,7 +229,7 @@ def dbl_KD_model_caller(prob_vals, spots, paths, W_x, W_z, firstDiag, secondDiag
 
 ### GENERATE FUNCTION THAT SAVES PRESET SPOT LISTS
 
-def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,gauss_limit=4,ebeam_dxover=0,las_wav=517e-9,ebeam_vel=2.0844e8,pos_adj_x=0,pos_adj_y=0,pos_adj_z=0,calcType=0,t_mag=15):
+def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,gauss_limit=4,ebeam_dxover=0,las_wav=517e-9,ebeam_vel=2.0844e8,pos_adj_x=0,pos_adj_y=0,pos_adj_z=0,calcType=0,t_mag=15,point_distance=8):
     print('Seeding workspace with relevant information.')
 
     num_electron_MC_trial = int(100) # number of electrons to test per trial, must be square rootable
@@ -405,23 +405,21 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
     return # phase_arr, pos, energ_arr, vel_arr
 
 def main(argv):
-    PPPP_calculator(calcType=0,t_mag=16)
-    '''
-    time_arr = np.arange(12,26)
-    for i in time_arr:
-        [phase_arr, pos, energ_arr, vel_arr] = PPPP_calculator(calcType=0,t_mag=i)
-    '''
-    '''
-    data_dump = []
-    data['phase_arr'] = phase_arr.tolist()
-    data['pos'] = pos.tolist()
-    data['energ_arr'] = energ_arr.tolist()
-    data['vel_arr'] = vel_arr.tolist()
-    data_dump.append(data)
-    filename = "crs_" + "t_" + str(i) + ".json"
-    with open(filename, "w") as outfile:
-        json_data = json.dump(data,outfile)
-    '''
+
+    dist_arr = np.arange(2,25)
+    for i in dist_arr:
+        [phase_arr, pos, energ_arr, vel_arr] = PPPP_calculator(calcType=0,point_distance=i)
+
+        data_dump = []
+        data['phase_arr'] = phase_arr.tolist()
+        data['pos'] = pos.tolist()
+        data['energ_arr'] = energ_arr.tolist()
+        data['vel_arr'] = vel_arr.tolist()
+        data_dump.append(data)
+        filename = "crs_" + "dist_" + str(i) + ".json"
+        with open(filename, "w") as outfile:
+            json_data = json.dump(data,outfile)
+
     '''
     vel = 8.15e7 # m/s
     sig_las = 350e-15 # s
