@@ -45,7 +45,7 @@ def Guoy(z, beam_waist, lam):
 def spatial_gauss(rho_xy,z,t, beam_waist,sig_las, lam):
     freq = 2*np.pi*c/lam # Hz
     wavevec = 2*np.pi/lam # m^-1
-    val = beam_waist/np.sqrt(omeg_las_sq(z,beam_waist,lam))*np.exp(-(rho_xy**2)/(omeg_las_sq(z,beam_waist,lam)))*np.cos(freq*t-wavevec*z - wavevec*(rho_xy**2)/(2*curv_rad(z, beam_waist, lam))+Guoy(z, beam_waist, lam))
+    val = beam_waist/np.sqrt(omeg_las_sq(z,beam_waist,lam))*np.exp(-(rho_xy**2)/(omeg_las_sq(z,beam_waist,lam)))*np.cos(freq*t-wavevec*z)
     return val
 
 @jit(nopython = True)
@@ -333,7 +333,6 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
 
     #[spots,paths] = spot_path_generator(10) # distance of 100 momenta units away from direct beam
     
-    point_distance = 6
     if (calcType == 0 or calcType == 2):
         filename = "./sgl_KD_spots/spot_" + str(point_distance) + ".json"
     elif (calcType == 1 or calcType == 3):
@@ -357,14 +356,13 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
             C0 = norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(pos[:,1]-c*((2*curtime+t_step)/2))**2/(sig_las**2*c**2))
 
             W0 = -e**2/2/hbar/mass_e*C0/2/freq*np.sin(freq*t_step)
+            W0 = W0.real
 
             prob_vals = np.zeros((spots.shape[0],num_electron_MC_trial))
 
             prob_vals = sgl_beam_model_caller(spots, paths, W0)
 
-            rad_curv = pos[:,1]*(1+z0**2/pos[:,1]**2)
-            Guoy_phase = np.arctan(pos[:,1]/z0)-np.pi/2
-            S = -wavevec*pos[:,1]-wavevec*rho_xy_sq/2/rad_curv+Guoy_phase
+            S = -wavevec*pos[:,1]
 
             phase_step = e**2/2/hbar/mass_e*C0*(freq*t_step+np.sin(freq*t_step)*np.cos(2*S+freq*(2*curtime+t_step)))/(2*freq)
             phase_arr = phase_arr + phase_step
@@ -383,16 +381,17 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
             W0xzp = -e**2/2/hbar/mass_e*C0xz/2/freq*np.sin(freq*t_step)
             W0xzm = -e**2/2/hbar/mass_e*C0xz/2*t_step
 
+            W0z = W0z.real
+            W0x = W0x.real
+            W0xzp = W0xzp.real
+            W0xzm = W0xzm.real
+
             prob_vals = np.zeros((spots.shape[0],num_electron_MC_trial))
 
             prob_vals = crs_beam_model_caller(prob_vals, spots, paths, W0z, W0x, W0xzm, W0xzp)
 
-            rad_curv_z = pos[:,1]*(1+z0**2/pos[:,1]**2)
-            Guoy_phase_z = np.arctan(pos[:,1]/z0)-np.pi/2
-            rad_curv_x = pos[:,0]*(1+z0**2/pos[:,0]**2)
-            Guoy_phase_x = np.arctan(pos[:,0]/z0)-np.pi/2
-            Sz = -wavevec*pos[:,1]-wavevec*rho_xy_sq/2/rad_curv_z+Guoy_phase_z
-            Sx = -wavevec*pos[:,0]-wavevec*rho_zy_sq/2/rad_curv_x+Guoy_phase_x
+            Sz = -wavevec*pos[:,1]
+            Sx = -wavevec*pos[:,0]
 
             phase_x = e**2/2/hbar/mass_e*C0x*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sx+freq*(2*curtime+t_step)))/(2*freq)
             phase_z = e**2/2/hbar/mass_e*C0z*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(2*curtime+t_step)))/(2*freq)
@@ -412,13 +411,15 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
             W0nz = -e**2/2/hbar/mass_e*C0nz/2/freq*np.sin(freq*t_step)
             W0nzz = -e**2/2/hbar/mass_e*C0nzz/2*t_step
 
+            W0z = W0z.real
+            W0nz = W0nz.real
+            W0nzz = W0nzz.real
+
             prob_vals = np.zeros((spots.shape[0],num_electron_MC_trial))
 
             prob_vals = sgl_KD_model_caller(prob_vals, spots, paths, W0z,W0nz,W0nzz)
 
-            rad_curv = pos[:,1]*(1+z0**2/pos[:,1]**2)
-            Guoy_phase = np.arctan(pos[:,1]/z0)-np.pi/2
-            Sz = -wavevec*pos[:,1]-wavevec*rho_xy_sq/2/rad_curv+Guoy_phase
+            Sz = -wavevec*pos[:,1]
             Snz = Sz
 
             phase_z = e**2/2/hbar/mass_e*C0z*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(2*curtime+t_step)))/(2*freq)
@@ -458,16 +459,27 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
             W0nxnzp = -e**2/2/hbar/mass_e*C0nxnz/2/freq*np.sin(freq*t_step)
             W0nxnzm = -e**2/2/hbar/mass_e*C0nxnz/2*t_step
 
+            W0zz = W0zz.real
+            W0nznz = W0nznz.real
+            W0nzz = W0nzz.real
+            W0xx = W0xx.real
+            W0nxnx = W0nxnx.real
+            W0nxx = W0nxx.real
+            W0xzp = W0xzp.real
+            W0xzm = W0xzm.real
+            W0xnzp = W0xnzp.real
+            W0xnzm = W0xnzm.real
+            W0nxzp = W0nxzp.real
+            W0nxzm = W0nxzm.real
+            W0nxnzp = W0nxnzp.real
+            W0nxnzm = W0nxnzm.real
+
             prob_vals = np.zeros((spots.shape[0],num_electron_MC_trial))
 
             prob_vals = crs_KD_model_caller(prob_vals, spots, paths, W0zz,W0nzz,W0nznz,W0xx,W0nxx,W0nxnx,W0xzp,W0nxzm,W0xnzm,W0nxnzp,W0xzm,W0nxzp,W0xnzp,W0nxnzm)
 
-            rad_curv_z = pos[:,1]*(1+z0**2/pos[:,1]**2)
-            Guoy_phase_z = np.arctan(pos[:,1]/z0)-np.pi/2
-            rad_curv_x = pos[:,0]*(1+z0**2/pos[:,0]**2)
-            Guoy_phase_x = np.arctan(pos[:,0]/z0)-np.pi/2
-            Sz = -wavevec*pos[:,1]-wavevec*rho_xy_sq/2/rad_curv_z+Guoy_phase_z
-            Sx = -wavevec*pos[:,0]-wavevec*rho_zy_sq/2/rad_curv_x+Guoy_phase_x
+            Sz = -wavevec*pos[:,1]
+            Sx = -wavevec*pos[:,0]
 
             phase_zz = e**2/2/hbar/mass_e*C0zz*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(2*curtime+t_step)))/(2*freq)
             phase_nznz = e**2/2/hbar/mass_e*C0nznz*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(2*curtime+t_step)))/(2*freq)
