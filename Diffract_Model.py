@@ -275,10 +275,10 @@ def crs_KD_model_caller(prob_vals, spots, paths, W0zz,W0nzz,W0nznz,W0xx,W0nxx,W0
 
 ### GENERATE FUNCTION THAT SAVES PRESET SPOT LISTS
 
-def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,gauss_limit=4,ebeam_dxover=0,las_wav=517e-9,ebeam_vel=2.0844e8,pos_adj_x=0,pos_adj_y=0,pos_adj_z=0,calcType=0,t_mag=15,point_distance=8):
+def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=2.5e-6,beam_waist=100e-6,gauss_limit=4,ebeam_dxover=0,las_wav=517e-9,ebeam_vel=2.0844e8,pos_adj_x=0,pos_adj_y=0,pos_adj_z=0,calcType=0,t_mag=15,point_distance=8):
     print('Seeding workspace with relevant information.')
 
-    num_electron_MC_trial = int(1) # number of electrons to test per trial, must be square rootable
+    num_electron_MC_trial = int(100) # number of electrons to test per trial, must be square rootable
     num_electrons_per_stage = 100 # 1e6; must be square rootable
 
     theta =  0
@@ -368,6 +368,8 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
         if (calcType == 0):
             omeg_las_sq_z = w0**2*(1+avg_pos[:,1]**2/z0**2)
             rho_xy_sq = avg_pos[:,0]**2 + avg_pos[:,2]**2
+            omeg_las_sq_z_inst = w0**2*(1+pos[:,1]**2/z0**2)
+            rho_xy_sq_inst = pos[:,0]**2 + pos[:,2]**2
 
             # need to account for positional history? Can acquire average position through knowing the number of steps
             C0 = norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(avg_pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
@@ -379,9 +381,11 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
 
             prob_vals = sgl_beam_model_caller(spots, paths, W0)
 
+            C0_inst = norm_factor_array**2*w0**2/omeg_las_sq_z_inst*np.exp(-2*rho_xy_sq_inst/omeg_las_sq_z_inst)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
+
             S = -wavevec*pos[:,1]
 
-            phase_step = e**2/2/hbar/mass_e*C0*(freq*t_step+np.sin(freq*t_step)*np.cos(2*S+freq*(time_add)))/(2*freq)
+            phase_step = e**2/2/hbar/mass_e*C0_inst*(freq*t_step+np.sin(freq*t_step)*np.cos(2*S+freq*(time_add)))/(2*freq)
             phase_step = phase_step.real
             phase_arr = phase_arr + phase_step
         elif (calcType == 1):
@@ -389,6 +393,10 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
             rho_xy_sq = avg_pos[:,0]**2 + avg_pos[:,2]**2
             omeg_las_sq_x = w0**2*(1+avg_pos[:,0]**2/z0**2)
             rho_zy_sq = avg_pos[:,1]**2 + avg_pos[:,2]**2
+            omeg_las_sq_z_inst = w0**2*(1+pos[:,1]**2/z0**2)
+            rho_xy_sq_inst = pos[:,0]**2 + pos[:,2]**2
+            omeg_las_sq_x_inst = w0**2*(1+pos[:,0]**2/z0**2)
+            rho_zy_sq_inst = pos[:,1]**2 + pos[:,2]**2
 
             C0z = norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(avg_pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
             C0x = norm_factor_array**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*np.exp(-(avg_pos[:,0]-c*((time_add)/2))**2/(sig_las**2*c**2))
@@ -411,9 +419,13 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
             Sz = -wavevec*pos[:,1]
             Sx = -wavevec*pos[:,0]
 
-            phase_x = e**2/2/hbar/mass_e*C0x*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sx+freq*(time_add)))/(2*freq)
-            phase_z = e**2/2/hbar/mass_e*C0z*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(time_add)))/(2*freq)
-            phase_xz = e**2/2/hbar/mass_e*C0xz*(np.sin(freq*t_step)*np.cos(Sz+Sx+freq*(time_add))+t_step*freq*np.cos(Sz-Sx))/(2*freq)
+            C0z_inst = norm_factor_array**2*w0**2/omeg_las_sq_z_inst*np.exp(-2*rho_xy_sq_inst/omeg_las_sq_z_inst)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0x_inst = norm_factor_array**2*w0**2/omeg_las_sq_x_inst*np.exp(-2*rho_zy_sq_inst/omeg_las_sq_x_inst)*np.exp(-(pos[:,0]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0xz_inst = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z_inst)/np.sqrt(omeg_las_sq_x_inst)*np.exp(-rho_xy_sq_inst/omeg_las_sq_z_inst-rho_zy_sq_inst/omeg_las_sq_x_inst)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]-c*((time_add)/2))**2/(2*sig_las**2*c**2))
+
+            phase_x = e**2/2/hbar/mass_e*C0x_inst*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sx+freq*(time_add)))/(2*freq)
+            phase_z = e**2/2/hbar/mass_e*C0z_inst*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(time_add)))/(2*freq)
+            phase_xz = e**2/2/hbar/mass_e*C0xz_inst*(np.sin(freq*t_step)*np.cos(Sz+Sx+freq*(time_add))+t_step*freq*np.cos(Sz-Sx))/(2*freq)
             
             phase_step = phase_x+phase_z+phase_xz
             phase_step = phase_step.real
@@ -421,6 +433,8 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
         elif (calcType == 2):
             omeg_las_sq_z = w0**2*(1+avg_pos[:,1]**2/z0**2)
             rho_xy_sq = avg_pos[:,0]**2 + avg_pos[:,2]**2
+            omeg_las_sq_z_inst = w0**2*(1+pos[:,1]**2/z0**2)
+            rho_xy_sq_inst = pos[:,0]**2 + pos[:,2]**2
 
             C0z = norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(avg_pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
             C0nz = norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(avg_pos[:,1]+c*((time_add)/2))**2/(sig_las**2*c**2))
@@ -438,12 +452,16 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
 
             prob_vals = sgl_KD_model_caller(prob_vals, spots, paths, W0z,W0nz,W0nzz)
 
+            C0z_inst = norm_factor_array**2*w0**2/omeg_las_sq_z_inst*np.exp(-2*rho_xy_sq_inst/omeg_las_sq_z_inst)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0nz_inst = norm_factor_array**2*w0**2/omeg_las_sq_z_inst*np.exp(-2*rho_xy_sq_inst/omeg_las_sq_z_inst)*np.exp(-(pos[:,1]+c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0nzz_inst = 2*norm_factor_array**2*w0**2/omeg_las_sq_z_inst*np.exp(-2*rho_xy_sq_inst/omeg_las_sq_z_inst)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,1]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
+
             Sz = -wavevec*pos[:,1]
             Snz = Sz
 
-            phase_z = e**2/2/hbar/mass_e*C0z*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(time_add)))/(2*freq)
-            phase_nz = e**2/2/hbar/mass_e*C0nz*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Snz+freq*(time_add)))/(2*freq)
-            phase_nzz =  e**2/2/hbar/mass_e*C0nzz/2/freq*(np.sin(freq*t_step)*np.cos(freq*(time_add))+t_step*freq*np.cos(2*Sz))
+            phase_z = e**2/2/hbar/mass_e*C0z_inst*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(time_add)))/(2*freq)
+            phase_nz = e**2/2/hbar/mass_e*C0nz_inst*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Snz+freq*(time_add)))/(2*freq)
+            phase_nzz =  e**2/2/hbar/mass_e*C0nzz_inst/2/freq*(np.sin(freq*t_step)*np.cos(freq*(time_add))+t_step*freq*np.cos(2*Sz))
             phase_step = phase_z+phase_nz+phase_nzz
             phase_step = phase_step.real
             phase_arr = phase_arr + phase_step
@@ -452,17 +470,21 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
             rho_zy_sq = avg_pos[:,1]**2 + avg_pos[:,2]**2
             omeg_las_sq_z = w0**2*(1+avg_pos[:,1]**2/z0**2)
             rho_xy_sq = avg_pos[:,0]**2 + avg_pos[:,2]**2
+            omeg_las_sq_z_inst = w0**2*(1+pos[:,1]**2/z0**2)
+            rho_xy_sq_inst = pos[:,0]**2 + pos[:,2]**2
+            omeg_las_sq_x_inst = w0**2*(1+pos[:,0]**2/z0**2)
+            rho_zy_sq_inst = pos[:,1]**2 + pos[:,2]**2
 
-            C0zz = norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
-            C0nznz = norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
-            C0nzz = 2*norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,1]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
-            C0xx = norm_factor_array**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*np.exp(-(pos[:,0]-c*((time_add)/2))**2/(sig_las**2*c**2))
-            C0nxnx = norm_factor_array**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*np.exp(-(pos[:,0]-c*((time_add)/2))**2/(sig_las**2*c**2))
-            C0nxx = 2*norm_factor_array**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*np.exp(-(pos[:,0]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
-            C0xz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z)/np.sqrt(omeg_las_sq_x)*np.exp(-rho_xy_sq/omeg_las_sq_z-rho_zy_sq/omeg_las_sq_x)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]-c*((time_add)/2))**2/(2*sig_las**2*c**2))
-            C0xnz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z)/np.sqrt(omeg_las_sq_x)*np.exp(-rho_xy_sq/omeg_las_sq_z-rho_zy_sq/omeg_las_sq_x)*np.exp(-(pos[:,1]+c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]-c*((time_add)/2))**2/(2*sig_las**2*c**2))
-            C0nxz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z)/np.sqrt(omeg_las_sq_x)*np.exp(-rho_xy_sq/omeg_las_sq_z-rho_zy_sq/omeg_las_sq_x)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
-            C0nxnz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z)/np.sqrt(omeg_las_sq_x)*np.exp(-rho_xy_sq/omeg_las_sq_z-rho_zy_sq/omeg_las_sq_x)*np.exp(-(pos[:,1]+c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0zz = norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(avg_pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0nznz = norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(avg_pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0nzz = 2*norm_factor_array**2*w0**2/omeg_las_sq_z*np.exp(-2*rho_xy_sq/omeg_las_sq_z)*np.exp(-(avg_pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(avg_pos[:,1]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0xx = norm_factor_array**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*np.exp(-(avg_pos[:,0]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0nxnx = norm_factor_array**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*np.exp(-(avg_pos[:,0]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0nxx = 2*norm_factor_array**2*w0**2/omeg_las_sq_x*np.exp(-2*rho_zy_sq/omeg_las_sq_x)*np.exp(-(avg_pos[:,0]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(avg_pos[:,0]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0xz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z)/np.sqrt(omeg_las_sq_x)*np.exp(-rho_xy_sq/omeg_las_sq_z-rho_zy_sq/omeg_las_sq_x)*np.exp(-(avg_pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(avg_pos[:,0]-c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0xnz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z)/np.sqrt(omeg_las_sq_x)*np.exp(-rho_xy_sq/omeg_las_sq_z-rho_zy_sq/omeg_las_sq_x)*np.exp(-(avg_pos[:,1]+c*((time_add)/2))**2/(2*sig_las**2*c**2)-(avg_pos[:,0]-c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0nxz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z)/np.sqrt(omeg_las_sq_x)*np.exp(-rho_xy_sq/omeg_las_sq_z-rho_zy_sq/omeg_las_sq_x)*np.exp(-(avg_pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(avg_pos[:,0]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0nxnz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z)/np.sqrt(omeg_las_sq_x)*np.exp(-rho_xy_sq/omeg_las_sq_z-rho_zy_sq/omeg_las_sq_x)*np.exp(-(avg_pos[:,1]+c*((time_add)/2))**2/(2*sig_las**2*c**2)-(avg_pos[:,0]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
             
             W0zz = -e**2/2/hbar/mass_e*C0zz/2/freq*np.sin(freq*time_diff)
             W0nznz = -e**2/2/hbar/mass_e*C0nznz/2/freq*np.sin(freq*time_diff)
@@ -498,25 +520,36 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
 
             prob_vals = crs_KD_model_caller(prob_vals, spots, paths, W0zz,W0nzz,W0nznz,W0xx,W0nxx,W0nxnx,W0xzp,W0nxzm,W0xnzm,W0nxnzp,W0xzm,W0nxzp,W0xnzp,W0nxnzm)
 
+            C0zz = norm_factor_array**2*w0**2/omeg_las_sq_z_inst*np.exp(-2*rho_xy_sq_inst/omeg_las_sq_z_inst)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0nznz = norm_factor_array**2*w0**2/omeg_las_sq_z_inst*np.exp(-2*rho_xy_sq_inst/omeg_las_sq_z_inst)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0nzz = 2*norm_factor_array**2*w0**2/omeg_las_sq_z_inst*np.exp(-2*rho_xy_sq_inst/omeg_las_sq_z_inst)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,1]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0xx = norm_factor_array**2*w0**2/omeg_las_sq_x_inst*np.exp(-2*rho_zy_sq_inst/omeg_las_sq_x_inst)*np.exp(-(pos[:,0]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0nxnx = norm_factor_array**2*w0**2/omeg_las_sq_x_inst*np.exp(-2*rho_zy_sq_inst/omeg_las_sq_x_inst)*np.exp(-(pos[:,0]-c*((time_add)/2))**2/(sig_las**2*c**2))
+            C0nxx = 2*norm_factor_array**2*w0**2/omeg_las_sq_x_inst*np.exp(-2*rho_zy_sq_inst/omeg_las_sq_x_inst)*np.exp(-(pos[:,0]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0xz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z_inst)/np.sqrt(omeg_las_sq_x_inst)*np.exp(-rho_xy_sq_inst/omeg_las_sq_z_inst-rho_zy_sq_inst/omeg_las_sq_x_inst)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]-c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0xnz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z_inst)/np.sqrt(omeg_las_sq_x_inst)*np.exp(-rho_xy_sq_inst/omeg_las_sq_z_inst-rho_zy_sq_inst/omeg_las_sq_x_inst)*np.exp(-(pos[:,1]+c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]-c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0nxz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z_inst)/np.sqrt(omeg_las_sq_x_inst)*np.exp(-rho_xy_sq_inst/omeg_las_sq_z_inst-rho_zy_sq_inst/omeg_las_sq_x_inst)*np.exp(-(pos[:,1]-c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            C0nxnz = 2*norm_factor_array**2*w0**2/np.sqrt(omeg_las_sq_z_inst)/np.sqrt(omeg_las_sq_x_inst)*np.exp(-rho_xy_sq_inst/omeg_las_sq_z_inst-rho_zy_sq_inst/omeg_las_sq_x_inst)*np.exp(-(pos[:,1]+c*((time_add)/2))**2/(2*sig_las**2*c**2)-(pos[:,0]+c*((time_add)/2))**2/(2*sig_las**2*c**2))
+            
             Sz = -wavevec*pos[:,1]
             Sx = -wavevec*pos[:,0]
 
-            phase_zz = e**2/2/hbar/mass_e*C0zz*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(time_add)))/(2*freq)
-            phase_nznz = e**2/2/hbar/mass_e*C0nznz*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(time_add)))/(2*freq)
-            phase_nzz = e**2/2/hbar/mass_e*C0nzz/2/freq*(np.sin(freq*t_step)*np.cos(freq*(time_add))+t_step*freq*np.cos(2*Sz))
-            phase_xx = e**2/2/hbar/mass_e*C0xx*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sx+freq*(time_add)))/(2*freq)
-            phase_nxnx = e**2/2/hbar/mass_e*C0nxnx*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sx+freq*(time_add)))/(2*freq)
-            phase_nxx = e**2/2/hbar/mass_e*C0nxx/2/freq*(np.sin(freq*t_step)*np.cos(freq*(time_add))+t_step*freq*np.cos(2*Sx))
-            phase_zx = e**2/2/hbar/mass_e*C0xz*(np.sin(freq*t_step)*np.cos(Sz+Sx+freq*(time_add))+t_step*freq*np.cos(Sz-Sx))/(2*freq)
-            phase_nzx = e**2/2/hbar/mass_e*C0xnz*(np.sin(freq*t_step)*np.cos(Sz+Sx+freq*(time_add))+t_step*freq*np.cos(Sz-Sx))/(2*freq)
-            phase_znx = e**2/2/hbar/mass_e*C0nxz*(np.sin(freq*t_step)*np.cos(Sz+Sx+freq*(time_add))+t_step*freq*np.cos(Sz-Sx))/(2*freq)
-            phase_nznx = e**2/2/hbar/mass_e*C0nxnz*(np.sin(freq*t_step)*np.cos(Sz+Sx+freq*(time_add))+t_step*freq*np.cos(Sz-Sx))/(2*freq)
+            phase_zz = e**2/2/hbar/mass_e*C0zz_inst*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(time_add)))/(2*freq)
+            phase_nznz = e**2/2/hbar/mass_e*C0nznz_inst*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sz+freq*(time_add)))/(2*freq)
+            phase_nzz = e**2/2/hbar/mass_e*C0nzz_inst/2/freq*(np.sin(freq*t_step)*np.cos(freq*(time_add))+t_step*freq*np.cos(2*Sz))
+            phase_xx = e**2/2/hbar/mass_e*C0xx_inst*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sx+freq*(time_add)))/(2*freq)
+            phase_nxnx = e**2/2/hbar/mass_e*C0nxnx_inst*(freq*t_step+np.sin(freq*t_step)*np.cos(2*Sx+freq*(time_add)))/(2*freq)
+            phase_nxx = e**2/2/hbar/mass_e*C0nxx_inst/2/freq*(np.sin(freq*t_step)*np.cos(freq*(time_add))+t_step*freq*np.cos(2*Sx))
+            phase_zx = e**2/2/hbar/mass_e*C0xz_inst*(np.sin(freq*t_step)*np.cos(Sz+Sx+freq*(time_add))+t_step*freq*np.cos(Sz-Sx))/(2*freq)
+            phase_nzx = e**2/2/hbar/mass_e*C0xnz_inst*(np.sin(freq*t_step)*np.cos(Sz+Sx+freq*(time_add))+t_step*freq*np.cos(Sz-Sx))/(2*freq)
+            phase_znx = e**2/2/hbar/mass_e*C0nxz_inst*(np.sin(freq*t_step)*np.cos(Sz+Sx+freq*(time_add))+t_step*freq*np.cos(Sz-Sx))/(2*freq)
+            phase_nznx = e**2/2/hbar/mass_e*C0nxnz_inst*(np.sin(freq*t_step)*np.cos(Sz+Sx+freq*(time_add))+t_step*freq*np.cos(Sz-Sx))/(2*freq)
             phase_step = phase_zz+phase_nznz+phase_nzz+phase_xx+phase_nxnx+phase_nxx+phase_zx+phase_nzx+phase_znx+phase_nznx
             phase_step = phase_step.real
             phase_arr = phase_arr + phase_step
     
         for j in np.arange(num_electron_MC_trial):
-            prob_vals[:,j] = (prob_vals[:,j] - min(prob_vals[:,j]))/(max(prob_vals[:,j])-min(prob_vals[:,j]))
+            prob_vals[:,j] = (prob_vals[:,j])/(prob_vals[location_direct,j])
         
         subtracted_prob_vals = prob_vals - history_prob_vals
         subtracted_prob_vals[location_direct,:] = 1
@@ -526,19 +559,16 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
         indices = np.zeros(num_electron_MC_trial, dtype=int)
         
         for j in np.arange(num_electron_MC_trial):
-            min_prob_vals = min(subtracted_prob_vals[:,j])*np.ones((1,spots.shape[0]))
-            max_prob_vals = max(subtracted_prob_vals[:,j])*np.ones((1,spots.shape[0]))
-            prob_vals[:,j] = (subtracted_prob_vals[:,j] - min_prob_vals)/(max_prob_vals-min_prob_vals)
-            
-            prob_val_cumul[:,j] = np.cumsum(prob_vals[:,j]/sum(prob_vals[:,j]))
+            subtracted_prob_vals = np.where(subtracted_prob_vals < 0, 0, subtracted_prob_vals)
+            prob_val_cumul[:,j] = np.cumsum(subtracted_prob_vals[:,j]/sum(subtracted_prob_vals[:,j]))
             indices[j] = np.nonzero(prob_val_cumul > np.full(prob_val_cumul.shape,random_sel[j]))[0][0]
             if indices[j] != location_direct:
-                scatter_history[j] = curtime
-                unscattered_steps[j] = 0
+                scatter_history[0,j] = curtime
+                unscattered_steps[0,j] = 0
                 total_track_pos[j,:] = [0.,0.,0.]
 
         if (curtime <= 0 and curtime+t_step >= 0):
-            print(prob_vals[:,0])
+            print(prob_val_cumul[:,0])
 
         momenta_shift = spots[indices,:]*hbar/lam
 
@@ -580,10 +610,9 @@ def PPPP_calculator(e_res=1e-12,laser_res=1e-12,E_pulse=5e-6,beam_waist=100e-6,g
 
 def main(argv):
 
-    dist_arr = np.arange(12,25)
+    dist_arr = np.arange(2,25)
     for i in dist_arr:
-        [phase_arr, pos, energ_arr, vel_arr] = PPPP_calculator(calcType=3,t_mag=i)
-
+        [phase_arr, pos, energ_arr, vel_arr] = PPPP_calculator(calcType=1,t_mag=14,point_distance=5)
         '''
         data = {}
         data_dump = []
@@ -592,11 +621,10 @@ def main(argv):
         data['energ_arr'] = energ_arr.tolist()
         data['vel_arr'] = vel_arr.tolist()
         data_dump.append(data)
-        filename = "sgl_beam_" + "tmag" + str(i) + ".json"
+        filename = "crs_beam_" + "dist_" + str(i) + ".json"
         with open(filename, "w") as outfile:
             json_data = json.dump(data,outfile)
         '''
-
     '''
     vel = 8.15e7 # m/s
     sig_las = 350e-15 # s
