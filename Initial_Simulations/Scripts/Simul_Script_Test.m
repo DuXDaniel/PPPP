@@ -1,0 +1,228 @@
+tic;
+
+planck = 6.626e-34; %J*s
+hbar = planck/2/pi;
+alpha = 1/137; % fine structure constant
+mass_e = 9.11e-31; % kg
+
+%% Construct laser beam
+c = 2.9979e8; % m/s
+lambda = 500e-9; % m
+w0 = 5e-6; % m
+sig_las = 1e-9; % seconds
+z0 = pi*w0^2/lambda; % Rayleigh range
+omeg_las_sq = @(z) w0.^2*(1+z.^2/z0.^2);
+laser = @(rho_xy,z,t) 1./pi^2./omeg_las_sq(z)./sig_las.^2./c.^2.*exp(-(2*rho_xy.^2)./(omeg_las_sq(z))).*exp(-(2.*(z-c.*t).^2)./(sig_las.^2.*c.^2));
+
+E_photon = planck*c/lambda; % J
+E_pulse = 100e-9; % J
+n_pulse = E_pulse/E_photon; % number of photons per pulse
+
+% --> Loop structure, cannot actually store the voxels in RAM like I wish I
+% could, (10k x 10k x 10k = 8 TB RAM) so have to do it the slow way and
+% advance each slice individually while calculating the full time range for
+% each slice. Forget each slice at the end of each time range and move to
+% the next.
+
+% Will note, can do 1k x 1k x 1k fairly easily. Shift to lower resolution?
+% seems reasonable, really only trying to get an idea of the phase profile.
+
+
+
+%%%%% ALIGNMENT SYMMETRY?
+% Could cut down arrays by 1/2 if accounting for the fact that there is
+% phase symmetry in the way the beams move (i.e. only need to calculate up
+% to the peak before simply applying rotational symmetry (mirrored upwards,
+% rotated 180) --> Add this later (no need to get into complexities now)
+
+%% Construct electron beam
+% Each voxel in the electron packet will contain some weighted number,
+% totaling to 1 when all of them are summed.
+
+xover_slope = 3/300; % 3 mm in 300 mm of travel
+xover_angle = atand(xover_slope); % degrees
+vel = 2.33e8; % velocity of electron, 200 kV, m/s
+sig_ebeam = 1e-9; % time resolution of ebeam, seconds
+omeg_ebeam = @(y) abs(xover_slope.*y); % meters
+e_beam = @(rho_xz,y,t) 1./pi./(omeg_ebeam(y)).^2./sig_ebeam.^2./vel.^2.*exp(-(2.*rho_xz.^2)./(omeg_ebeam(y)).^2).*exp(-(2.*(y-vel.*t).^2)./(sig_ebeam.^2*vel.^2));
+e_beam_xz = @(rho_xz,y) 1./pi./(omeg_ebeam(y)).^2.*exp(-(2.*rho_xz.^2)./(omeg_ebeam(y)).^2);
+e_beam_xz_raster = @(x,y,z) 1./pi./(omeg_ebeam(y)).^2.*exp(-(2.*(x.^2 + z.^2))./(omeg_ebeam(y)).^2);
+e_beam_yt = @(y) 1./pi./sig_ebeam.^2./vel.^2.*exp(-(2.*(y).^2)./(sig_ebeam.^2*vel.^2));
+
+% --> Key: don't need to calculate instantaneous density of electrons, just
+% need the path and the ending normalization.
+
+%%%% Construct voxels
+% how granular do I want the voxels if they all pass through (0,0) at
+% crossover? It's arbitrary at that point. Let us assume a 1000 x 1000
+% grid split across 6-sigma centered at the peak
+voxel_granularity = 1000;
+
+e_beam_xz_norm = 1./integral(@(x) e_beam_xz(x,3*sig_ebeam*vel), 0, Inf);
+
+%%%% Construct slices
+% Do initial normalization, then segment into the slices slices dependent
+% on e_pulse res (let's assume 1000 slices?) or perhaps make it such that
+% it is the smaller of the laser or e pulse resolutions divided by 10000 as
+% the spacing?
+
+e_beam_yt_norm = 1./integral(e_beam_yt, -Inf, Inf);
+
+% --> Normalize on a per slice basis here
+% --> which is to say, ignore the spatial component and normalize the
+% temporal/y component and attach each slice a portion of that
+% normalization
+% --> Then simply multiply that slice's normalization factor to the
+% individual voxel of each slice at the maximum expansion point after
+% Compton scattering. Just take the distribution at t_end.
+
+%% calculating voxel weights... need to find integration bounds for each voxel point at the final position of the e-beam ("detector")
+voxel_xz_grid_weights = zeros(voxel_granularity, voxel_granularity);
+voxel_y_weights = zeros(voxel_granularity, 1);
+
+xz_spacing = 2*(omeg_ebeam(3*sig_ebeam*vel))/voxel_granularity;
+xz_bounds = linspace(-omeg_ebeam(3*sig_ebeam*vel)-xz_spacing/2, omeg_ebeam(3*sig_ebeam*vel)+xz_spacing/2, voxel_granularity+1);
+
+% % % h = waitbar;
+% % % for j = 1:voxel_granularity
+% % %     for k = 1:voxel_granularity
+% % %         voxel_xz_grid_weights(j,k) = e_beam_xz_norm*integral2(@(x,y) e_beam_xz_raster(x,3*sig_ebeam*vel,y), xz_bounds(j), xz_bounds(j+1), xz_bounds(k), xz_bounds(k+1));
+% % %     end
+% % %     waitbar(j/voxel_granularity);
+% % % end
+% % % close(h);
+
+voxel_xz_grid_weights = xlsread('XZ_Weights.xlsx');
+
+y_spacing = 2*3*sig_ebeam*vel/voxel_granularity;
+y_bounds = linspace(-3*sig_ebeam*vel - y_spacing/2,3*sig_ebeam*vel + y_spacing/2,voxel_granularity+1);
+
+% % % for l = 1:voxel_granularity
+% % %     voxel_y_weights(l) = e_beam_yt_norm*integral(e_beam_yt, y_bounds(l), y_bounds(l+1));
+% % % end
+
+voxel_y_weights = xlsread('Y_Weights.xlsx');
+
+%%%% Construct time ranges
+% t range dependent on e_pulse res and laser res (whichever is larger?) t
+% resolution dependent on the resolutions as well, but whichever is smaller
+
+temporal_granularity = 1000;
+
+if sig_las < sig_ebeam
+    t_res = sig_las/temporal_granularity;
+    t_range = -3*sig_ebeam:t_res_3*sig_ebeam;
+else
+    t_res = sig_ebeam/temporal_granularity;
+    t_range = -3*sig_las:t_res:3*sig_las;
+end
+
+%%%% Construct pathway of travel for all voxels
+% pathway of travel is identical at all positions of xz, so just find a
+% generic pathway of travel for a double cone base the pathway off of the
+% crossover angle (just define by slope maybe?) --> Seems like another
+% variable to take note of
+
+% Need to calculate changing width of e-beam
+
+%%%% voxel square sizes can be same because of travel path. Just change
+% magnitude of Gaussian from back focal plane
+
+% How to populate location data? Want the lower half of the e-beam
+% (symmetry) and 3-sigma from the center
+voxel_grid_phase_data = zeros(voxel_granularity,voxel_granularity,voxel_granularity);
+voxel_grid_slope_x_data = zeros(voxel_granularity,voxel_granularity); % travel path information for each voxel, only need one representative plane for each
+voxel_grid_slope_z_data = zeros(voxel_granularity,voxel_granularity); % travel path information for each voxel, only need one representative plane for each
+voxel_grid_z_data = zeros(voxel_granularity,voxel_granularity,voxel_granularity);
+voxel_grid_x_data = zeros(voxel_granularity,voxel_granularity,voxel_granularity);
+voxel_grid_y_data = zeros(voxel_granularity,voxel_granularity,voxel_granularity);
+
+y_dist_from_center = 3*sig_ebeam*vel;
+
+for j = 1:voxel_granularity
+    voxel_grid_slope_x_data(j,:) = linspace(-3*omeg_ebeam(3*sig_ebeam*vel),3*omeg_ebeam(3*sig_ebeam*vel),voxel_granularity)/y_dist_from_center;
+    voxel_grid_slope_z_data(:,j) = linspace(-3*omeg_ebeam(3*sig_ebeam*vel),3*omeg_ebeam(3*sig_ebeam*vel),voxel_granularity)/y_dist_from_center;
+end
+
+for j = 1:voxel_granularity
+    for k = 1:voxel_granularity
+        for l = 1:voxel_granularity
+            voxel_grid_y_data(j,k,l) = 3*sig_ebeam*vel + y_spacing*(l-1);
+            voxel_grid_x_data(j,k,l) = voxel_grid_y_data(j,k,l)*voxel_grid_slope_x_data(j,k);
+            voxel_grid_z_data(j,k,l) = voxel_grid_y_data(j,k,l)*voxel_grid_slope_z_data(j,k);
+        end
+    end
+end
+
+toc;
+
+%% Loop
+
+voxel_grid_photon_density = zeros(voxel_granularity, voxel_granularity);
+
+h2 = waitbar();
+for cur_t = t_range
+    
+    % calculate laser position and normalization here
+    
+    laser_norm = n_pulse./integral2(@(x,y) laser(x,y,cur_t), 0, Inf, -Inf, Inf);
+    
+    for cur_slice = 1:voxel_granularity
+        
+        slice_pos_x = voxel_grid_x_data(:,:,cur_slice);
+        slice_pos_y = voxel_grid_y_data(:,:,cur_slice);
+        slice_pos_z = voxel_grid_z_data(:,:,cur_slice);
+        
+        slice_pos_rho = sqrt(slice_pos_x.^2 + slice_pos_y.^2);
+        
+        % Determine slice level --> will determine weighting at the end
+        
+        % Assumption: all electrons pass through (x0,z0) at crossover most
+        % likely incorrect, but we have nothing else to go off of will only
+        % slightly cause the CTF to show a higher than normal resolution
+        
+        % reference current voxel xz position grid from travel path
+        % calculation and current time
+        
+        % calculate photon densities at position grid
+        for m = 1:voxel_granularity
+            for n = 1:voxel_granularity
+                voxel_grid_photon_density(m,n) = laser_norm*laser(slice_pos_rho(m,n),slice_pos_z(m,n),cur_t);
+                
+                voxel_grid_y_data(m,n,cur_slice) = voxel_grid_y_data(m,n,cur_slice) - t_res*vel;
+                voxel_grid_x_data(m,n,cur_slice) = voxel_grid_y_data(m,n,cur_slice)*voxel_grid_slope_x_data(m,n);
+                voxel_grid_z_data(m,n,cur_slice) = voxel_grid_y_data(m,n,cur_slice)*voxel_grid_slope_z_data(m,n);
+                
+                % move the slice down, recalculate all the positions of the voxels
+            end
+        end
+        
+        %% CAN THIS BE CONVERTED INTO A MATRIX CALCULATION?
+        
+        % select voxel, calculate density at position, calculate phase
+        % shift, add to total phase shift
+        
+        voxel_grid_phase_data(:,:,cur_slice) = voxel_grid_phase_data(:,:,cur_slice) + voxel_grid_photon_density.*lambda.*hbar.*alpha.*t_res./sqrt(mass_e^2+(mass_e*vel)^2/c^2);
+        
+    end
+    
+    % size of final beam determined by time resolution of beam and size of
+    % laser pulse (i.e. arbitrary), set here to size at 3*sig_ebeam*vel in
+    % y dir
+    
+    waitbar((cur_t - t_range(1))/(t_range(end) - t_range(1)));
+end
+
+% generate map distribution of electron beam, summing and averaging over
+% all slices
+
+final_phase_data = zeros(voxel_granularity, voxel_granularity);
+stdev_phase_data = zeros(voxel_granularity, voxel_granularity);
+
+for m = 1:voxel_granularity
+    for n = 1:voxel_granularity
+        final_phase_data(m,n) = mean(voxel_grid_phase_data(m,n,:));
+        
+        stdev_phase_data(m,n) = std(voxel_grid_phase_data(m,n,:));
+    end
+end
